@@ -6,6 +6,13 @@
 
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.4</version>
+        <relativePath/>
+    </parent>
+
     <groupId>com.bookingeventflow</groupId>
     <artifactId>booking-event-flow</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -14,5 +21,14 @@
 
     <name>BookingEventFlow</name>
     <description>A production-style event booking platform.</description>
+
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <modules>
+        <module>libraries</module>
+        <module>services</module>
+    </modules>
 
 </project>
