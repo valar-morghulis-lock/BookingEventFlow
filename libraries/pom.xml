@@ -10,10 +10,20 @@
         <groupId>com.bookingeventflow</groupId>
         <artifactId>booking-event-flow</artifactId>
         <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>libraries</artifactId>
 
     <packaging>pom</packaging>
+
+    <modules>
+        <module>common-domain</module>
+        <!-- later -->
+        <!-- <module>common-events</module> -->
+        <!-- <module>common-security</module> -->
+        <!-- <module>common-observability</module> -->
+        <!-- <module>common-test</module> -->
+    </modules>
 
 </project>
