@@ -2,19 +2,11 @@ package com.bookingeventflow.common.entity;
 
 import com.bookingeventflow.common.identifier.UUIDGenerator;
 import jakarta.persistence.Column;
-import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Version;
 import lombok.Getter;
-import org.springframework.data.annotation.CreatedBy;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedBy;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -32,6 +24,20 @@ public abstract class BaseEntity {
 
     protected BaseEntity() {
         this.id = UUIDGenerator.INSTANCE.generate();
+    }
+
+    /**
+     * Returns the unique identifier of this entity.
+     */
+    public UUID id() {
+        return id;
+    }
+
+    /**
+     * Returns the JPA optimistic-lock version.
+     */
+    public Long version() {
+        return version;
     }
 
     @Override

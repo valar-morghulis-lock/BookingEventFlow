@@ -6,73 +6,168 @@
 
     <modelVersion>4.0.0</modelVersion>
 
+
+    <!-- ========================================================= -->
+    <!-- Parent                                                     -->
+    <!-- ========================================================= -->
+
     <parent>
+
         <groupId>com.bookingeventflow</groupId>
         <artifactId>booking-event-flow</artifactId>
         <version>0.0.1-SNAPSHOT</version>
+
         <relativePath>../../pom.xml</relativePath>
+
     </parent>
+
+
+    <!-- ========================================================= -->
+    <!-- Project Coordinates                                       -->
+    <!-- ========================================================= -->
 
     <artifactId>event-service</artifactId>
 
     <name>Event Service</name>
     <description>Manages events and event sessions.</description>
 
+
+    <!-- ========================================================= -->
+    <!-- Dependencies                                               -->
+    <!-- ========================================================= -->
+
     <dependencies>
 
-        <!-- REST API -->
+
+        <!-- ===================================================== -->
+        <!-- Shared Domain                                          -->
+        <!-- ===================================================== -->
+
         <dependency>
+
+            <groupId>com.bookingeventflow</groupId>
+            <artifactId>common-domain</artifactId>
+
+        </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- REST API                                               -->
+        <!-- ===================================================== -->
+
+        <dependency>
+
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+
         </dependency>
 
-        <!-- Bean Validation -->
+
+        <!-- ===================================================== -->
+        <!-- Bean Validation                                        -->
+        <!-- ===================================================== -->
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+
         </dependency>
 
-        <!-- Spring Data JPA -->
+
+        <!-- ===================================================== -->
+        <!-- JPA / Hibernate                                        -->
+        <!-- ===================================================== -->
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
+
         </dependency>
 
-        <!-- PostgreSQL Driver -->
+
+        <!-- ===================================================== -->
+        <!-- PostgreSQL                                             -->
+        <!-- ===================================================== -->
+
         <dependency>
+
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
+
         </dependency>
 
-        <!-- Flyway -->
+
+        <!-- ===================================================== -->
+        <!-- Flyway                                                 -->
+        <!-- ===================================================== -->
+
         <dependency>
+
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
+
         </dependency>
 
-        <!-- Flyway PostgreSQL Database Support -->
+
         <dependency>
+
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
+
         </dependency>
 
-        <!-- Tests -->
+
+        <!-- ===================================================== -->
+        <!-- Spring Boot Test                                       -->
+        <!-- ===================================================== -->
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+
             <scope>test</scope>
+
         </dependency>
+
+
+        <!-- ===================================================== -->
+        <!-- ArchUnit JUnit 5                                       -->
+        <!-- ===================================================== -->
+
+        <dependency>
+
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+
+            <scope>test</scope>
+
+        </dependency>
+
 
     </dependencies>
 
+
+    <!-- ========================================================= -->
+    <!-- Build                                                      -->
+    <!-- ========================================================= -->
+
     <build>
+
         <plugins>
+
             <plugin>
+
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+
             </plugin>
+
         </plugins>
+
     </build>
 
 </project>

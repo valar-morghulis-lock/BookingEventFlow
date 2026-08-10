@@ -6,12 +6,21 @@
 
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- ========================================================= -->
+    <!-- Spring Boot Parent                                        -->
+    <!-- ========================================================= -->
+
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.5.4</version>
         <relativePath/>
     </parent>
+
+
+    <!-- ========================================================= -->
+    <!-- Project Coordinates                                       -->
+    <!-- ========================================================= -->
 
     <groupId>com.bookingeventflow</groupId>
     <artifactId>booking-event-flow</artifactId>
@@ -22,13 +31,96 @@
     <name>BookingEventFlow</name>
     <description>A production-style event booking platform.</description>
 
+
+    <!-- ========================================================= -->
+    <!-- Properties                                                 -->
+    <!-- ========================================================= -->
+
     <properties>
+
         <java.version>21</java.version>
+
+        <booking-event-flow.version>0.0.1-SNAPSHOT</booking-event-flow.version>
+
+        <archunit.version>1.4.1</archunit.version>
+
     </properties>
 
+
+    <!-- ========================================================= -->
+    <!-- Dependency Management                                      -->
+    <!-- ========================================================= -->
+
+    <dependencyManagement>
+
+        <dependencies>
+
+            <!-- ================================================= -->
+            <!-- Internal Libraries                                -->
+            <!-- ================================================= -->
+
+            <dependency>
+                <groupId>com.bookingeventflow</groupId>
+                <artifactId>common-domain</artifactId>
+                <version>${booking-event-flow.version}</version>
+            </dependency>
+
+
+            <!-- ================================================= -->
+            <!-- ArchUnit                                           -->
+            <!-- ================================================= -->
+
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+            </dependency>
+
+
+            <!-- ================================================= -->
+            <!-- Future Shared Libraries                           -->
+            <!-- ================================================= -->
+
+            <!--
+            <dependency>
+                <groupId>com.bookingeventflow</groupId>
+                <artifactId>common-events</artifactId>
+                <version>${booking-event-flow.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.bookingeventflow</groupId>
+                <artifactId>common-security</artifactId>
+                <version>${booking-event-flow.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.bookingeventflow</groupId>
+                <artifactId>common-observability</artifactId>
+                <version>${booking-event-flow.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.bookingeventflow</groupId>
+                <artifactId>common-test</artifactId>
+                <version>${booking-event-flow.version}</version>
+            </dependency>
+            -->
+
+        </dependencies>
+
+    </dependencyManagement>
+
+
+    <!-- ========================================================= -->
+    <!-- Reactor Modules                                            -->
+    <!-- ========================================================= -->
+
     <modules>
+
         <module>libraries</module>
         <module>services</module>
+
     </modules>
 
 </project>
