@@ -3,18 +3,18 @@ name: booking-event-flow
 services:
 
   event-service-db:
-    image: postgres:${POSTGRES_VERSION}
+    image: postgres:${POSTGRES_VERSION:-17}
     container_name: booking-event-flow-event-db
 
     restart: unless-stopped
 
     environment:
       POSTGRES_DB: ${EVENT_DB_NAME}
-      POSTGRES_USER: ${EVENT_DB_USER}
+      POSTGRES_USER: ${EVENT_DB_USERNAME}
       POSTGRES_PASSWORD: ${EVENT_DB_PASSWORD}
 
     ports:
-      - "5432:5432"
+      - "${EVENT_DB_PORT}:5432"
 
     volumes:
       - event-service-db-data:/var/lib/postgresql/data

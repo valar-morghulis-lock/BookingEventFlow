@@ -15,27 +15,54 @@ import java.util.UUID;
 public abstract class BaseEntity {
 
     @Id
-    @Column(nullable = false, updatable = false)
+    @Column(
+            nullable = false,
+            updatable = false
+    )
     private UUID id;
 
     @Version
-    @Column(nullable = false)
+    @Column(
+            nullable = false
+    )
     private Long version;
 
     protected BaseEntity() {
+        /*
+         * New entities receive their UUID immediately.
+         *
+         * IMPORTANT:
+         * version intentionally remains null.
+         *
+         * Hibernate uses the null version to recognize this
+         * as a new entity when Spring Data calls save().
+         */
         this.id = UUIDGenerator.INSTANCE.generate();
     }
 
     /**
-     * Returns the unique identifier of this entity.
+     * Used when reconstructing an entity whose identity and
+     * optimistic-lock version already exist in the database.
      */
+    protected void reconstituteIdentity(
+            UUID id,
+            Long version
+    ) {
+        this.id = Objects.requireNonNull(
+                id,
+                "Entity id must not be null"
+        );
+
+        this.version = Objects.requireNonNull(
+                version,
+                "Entity version must not be null"
+        );
+    }
+
     public UUID id() {
         return id;
     }
 
-    /**
-     * Returns the JPA optimistic-lock version.
-     */
     public Long version() {
         return version;
     }

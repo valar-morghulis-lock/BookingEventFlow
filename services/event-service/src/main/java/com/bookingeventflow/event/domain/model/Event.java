@@ -10,6 +10,7 @@ import com.bookingeventflow.event.domain.valueobject.EventName;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 public class Event extends AggregateRoot {
 
@@ -59,6 +60,32 @@ public class Event extends AggregateRoot {
                 description,
                 scheduledAt
         );
+    }
+
+    public static Event reconstitute(
+            UUID id,
+            Long version,
+            EventName name,
+            EventDescription description,
+            Instant scheduledAt,
+            EventStatus status
+    ) {
+        Objects.requireNonNull(id, "Event id must not be null");
+        Objects.requireNonNull(version, "Event version must not be null");
+        Objects.requireNonNull(name, "Event name must not be null");
+        Objects.requireNonNull(scheduledAt, "Event scheduledAt must not be null");
+        Objects.requireNonNull(status, "Event status must not be null");
+
+        Event event = new Event();
+
+        event.reconstituteIdentity(id, version);
+
+        event.name = name;
+        event.description = description;
+        event.scheduledAt = scheduledAt;
+        event.status = status;
+
+        return event;
     }
 
     public EventName name() {

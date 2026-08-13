@@ -3,12 +3,6 @@
   application:
     name: event-service
 
-  datasource:
-    url: jdbc:postgresql://localhost:5432/event_service
-    username: event_service
-    password: event_service
-    driver-class-name: org.postgresql.Driver
-
   jpa:
     open-in-view: false
 
@@ -23,6 +17,3 @@
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
-
-server:
-  port: 8081
