@@ -328,6 +328,3 @@ BookingEventFlow is currently a production-style event booking platform under ac
 
 The system should not be considered production-ready. The current implementation is the foundation for the broader architecture and upcoming booking workflow.
 
-## License
-
-TBD
