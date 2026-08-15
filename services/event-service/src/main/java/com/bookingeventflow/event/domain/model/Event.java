@@ -7,6 +7,7 @@ import com.bookingeventflow.event.domain.event.EventCreated;
 import com.bookingeventflow.event.domain.event.EventPublished;
 import com.bookingeventflow.event.domain.valueobject.EventDescription;
 import com.bookingeventflow.event.domain.valueobject.EventName;
+import com.bookingeventflow.event.exception.InvalidEventStateException;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -26,54 +27,40 @@ public class Event extends AggregateRoot {
     protected Event() {
     }
 
-    private Event(
-            EventName name,
-            EventDescription description,
-            Instant scheduledAt
-    ) {
+    private Event(EventName name, EventDescription description, Instant scheduledAt) {
         this.name = requireName(name);
         this.description = description;
         this.scheduledAt = requireScheduledAt(scheduledAt);
         this.status = EventStatus.DRAFT;
 
-        registerEvent(
-                new EventCreated(
-                        id(),
-                        Instant.now()
-                )
-        );
+        registerEvent(new EventCreated(id(), Instant.now()));
     }
 
     /**
      * Creates a new event in DRAFT state.
-     *
+     * <p>
      * A new EventCreated domain event is registered as part
      * of aggregate creation.
      */
-    public static Event create(
-            EventName name,
-            EventDescription description,
-            Instant scheduledAt
-    ) {
-        return new Event(
-                name,
-                description,
-                scheduledAt
-        );
+    public static Event create(EventName name, EventDescription description, Instant scheduledAt) {
+        return new Event(name, description, scheduledAt);
     }
 
-    public static Event reconstitute(
-            UUID id,
-            Long version,
-            EventName name,
-            EventDescription description,
-            Instant scheduledAt,
-            EventStatus status
-    ) {
+    /**
+     * Reconstitutes an event from its persisted state.
+     * <p>
+     * No domain event is registered during reconstitution because
+     * the event already exists and is being restored from persistence.
+     */
+    public static Event reconstitute(UUID id, Long version, EventName name, EventDescription description, Instant scheduledAt, EventStatus status) {
         Objects.requireNonNull(id, "Event id must not be null");
+
         Objects.requireNonNull(version, "Event version must not be null");
+
         Objects.requireNonNull(name, "Event name must not be null");
+
         Objects.requireNonNull(scheduledAt, "Event scheduledAt must not be null");
+
         Objects.requireNonNull(status, "Event status must not be null");
 
         Event event = new Event();
@@ -106,7 +93,7 @@ public class Event extends AggregateRoot {
 
     /**
      * Publishes the event.
-     *
+     * <p>
      * Only DRAFT events can be published.
      */
     public void publish() {
@@ -115,46 +102,26 @@ public class Event extends AggregateRoot {
 
         status = EventStatus.PUBLISHED;
 
-        registerEvent(
-                new EventPublished(
-                        id(),
-                        Instant.now()
-                )
-        );
+        registerEvent(new EventPublished(id(), Instant.now()));
     }
 
     /**
      * Cancels the event.
-     *
+     * <p>
      * DRAFT and PUBLISHED events may be cancelled.
      */
     public void cancel() {
 
-        if (status == EventStatus.CANCELLED) {
-            throw new IllegalStateException(
-                    "Event is already cancelled"
-            );
-        }
-
-        if (status == EventStatus.COMPLETED) {
-            throw new IllegalStateException(
-                    "Completed events cannot be cancelled"
-            );
-        }
+        ensureCancellable();
 
         status = EventStatus.CANCELLED;
 
-        registerEvent(
-                new EventCancelled(
-                        id(),
-                        Instant.now()
-                )
-        );
+        registerEvent(new EventCancelled(id(), Instant.now()));
     }
 
     /**
      * Marks the event as completed.
-     *
+     * <p>
      * Only PUBLISHED events can be completed.
      */
     public void complete() {
@@ -163,24 +130,15 @@ public class Event extends AggregateRoot {
 
         status = EventStatus.COMPLETED;
 
-        registerEvent(
-                new EventCompleted(
-                        id(),
-                        Instant.now()
-                )
-        );
+        registerEvent(new EventCompleted(id(), Instant.now()));
     }
 
     /**
      * Updates the event details.
-     *
+     * <p>
      * CANCELLED and COMPLETED events cannot be modified.
      */
-    public void updateDetails(
-            EventName name,
-            EventDescription description,
-            Instant scheduledAt
-    ) {
+    public void updateDetails(EventName name, EventDescription description, Instant scheduledAt) {
 
         ensureModifiable();
 
@@ -189,17 +147,21 @@ public class Event extends AggregateRoot {
         this.scheduledAt = requireScheduledAt(scheduledAt);
     }
 
+    private void ensureCancellable() {
+
+        if (status != EventStatus.DRAFT && status != EventStatus.PUBLISHED) {
+
+            throw new InvalidEventStateException("Event in " + status + " state cannot be cancelled");
+        }
+    }
+
     private void ensureModifiable() {
 
-        if (status == EventStatus.CANCELLED) {
-            throw new IllegalStateException(
-                    "Cancelled events cannot be modified"
-            );
-        }
+        if (status == EventStatus.CANCELLED ||
+                status == EventStatus.COMPLETED) {
 
-        if (status == EventStatus.COMPLETED) {
-            throw new IllegalStateException(
-                    "Completed events cannot be modified"
+            throw new InvalidEventStateException(
+                    "Event in " + status + " state cannot be modified"
             );
         }
     }
@@ -207,26 +169,17 @@ public class Event extends AggregateRoot {
     private void ensureStatus(EventStatus expectedStatus) {
 
         if (status != expectedStatus) {
-            throw new IllegalStateException(
-                    "Event must be in " + expectedStatus
-                            + " state but is currently " + status
-            );
+            throw new InvalidEventStateException("Event must be in " + expectedStatus + " state but is currently " + status);
         }
     }
 
     private static EventName requireName(EventName name) {
 
-        return Objects.requireNonNull(
-                name,
-                "Event name must not be null"
-        );
+        return Objects.requireNonNull(name, "Event name must not be null");
     }
 
     private static Instant requireScheduledAt(Instant scheduledAt) {
 
-        return Objects.requireNonNull(
-                scheduledAt,
-                "Event scheduledAt must not be null"
-        );
+        return Objects.requireNonNull(scheduledAt, "Event scheduledAt must not be null");
     }
 }

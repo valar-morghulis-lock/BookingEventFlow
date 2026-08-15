@@ -1,8 +1,11 @@
 package com.bookingeventflow.event.controller;
 
+import com.bookingeventflow.common.pagination.CursorDecodingException;
 import com.bookingeventflow.event.domain.model.EventStatus;
 import com.bookingeventflow.event.entity.EventEntity;
 import com.bookingeventflow.event.exception.EventNotFoundException;
+import com.bookingeventflow.event.exception.InvalidEventStateException;
+import com.bookingeventflow.event.presentation.response.EventPageResponse;
 import com.bookingeventflow.event.presentation.response.EventResponse;
 import com.bookingeventflow.event.service.EventService;
 import org.junit.jupiter.api.Test;
@@ -36,16 +39,101 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(EventController.class)
 class EventControllerTest {
 
+    private static final String EVENTS_URL =
+            "/api/v1/events";
+
+    private static final UUID EVENT_ID =
+            UUID.fromString(
+                    "512c5d0f-a416-4430-9265-4069b1637964"
+            );
+
+    private static final String EVENT_URL =
+            EVENTS_URL + "/" + EVENT_ID;
+
+    private static final String VALID_REQUEST = """
+            {
+              "name": "Rock Concert",
+              "description": "Live concert",
+              "scheduledAt": "2026-12-20T19:00:00Z"
+            }
+            """;
+
+    private static final String UPDATED_REQUEST = """
+            {
+              "name": "Rock Concert",
+              "description": "Live concert 2x",
+              "scheduledAt": "2026-12-20T19:00:00Z"
+            }
+            """;
+
+    private static final String INVALID_REQUEST = """
+            {
+              "name": "",
+              "description": "",
+              "scheduledAt": "2020-01-01T00:00:00Z"
+            }
+            """;
+
+    private static final Instant SCHEDULED_AT =
+            Instant.parse("2026-12-20T19:00:00Z");
+
+    private static final String NEXT_CURSOR =
+            "next-cursor";
+
+    private static final String PREVIOUS_CURSOR =
+            "previous-cursor";
+
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
     private EventService eventService;
 
-    private final UUID eventId = UUID.fromString("512c5d0f-a416-4430-9265-4069b1637964");
+    // =========================================================
+    // TEST FIXTURES
+    // =========================================================
 
     private EventResponse response() {
-        return new EventResponse(eventId, 0L, "Rock Concert", "Live concert", Instant.parse("2026-12-20T19:00:00Z"), EventStatus.DRAFT);
+
+        return response(
+                0L,
+                "Rock Concert",
+                "Live concert",
+                EventStatus.DRAFT
+        );
+    }
+
+    private EventResponse response(
+            long version,
+            String name,
+            String description,
+            EventStatus status
+    ) {
+
+        return new EventResponse(
+                EVENT_ID,
+                version,
+                name,
+                description,
+                SCHEDULED_AT,
+                status
+        );
+    }
+
+    private EventPageResponse pageResponse() {
+
+        return new EventPageResponse(
+                List.of(response()),
+                NEXT_CURSOR
+        );
+    }
+
+    private EventPageResponse emptyPageResponse() {
+
+        return new EventPageResponse(
+                List.of(),
+                null
+        );
     }
 
     // =========================================================
@@ -55,36 +143,128 @@ class EventControllerTest {
     @Test
     void create_shouldReturn201() throws Exception {
 
-        when(eventService.create(any())).thenReturn(response());
+        when(eventService.create(any()))
+                .thenReturn(response());
 
-        mockMvc.perform(post("/api/v1/events").contentType(MediaType.APPLICATION_JSON).content("""
-                {
-                  "name": "Rock Concert",
-                  "description": "Live concert",
-                  "scheduledAt": "2026-12-20T19:00:00Z"
-                }
-                """)).andExpect(status().isCreated()).andExpect(jsonPath("$.id").value(eventId.toString())).andExpect(jsonPath("$.version").value(0)).andExpect(jsonPath("$.name").value("Rock Concert")).andExpect(jsonPath("$.description").value("Live concert")).andExpect(jsonPath("$.status").value("DRAFT"));
+        mockMvc.perform(
+                        post(EVENTS_URL)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST)
+                )
+                .andExpect(status().isCreated())
+                .andExpect(
+                        jsonPath("$.id")
+                                .value(EVENT_ID.toString())
+                )
+                .andExpect(
+                        jsonPath("$.version")
+                                .value(0)
+                )
+                .andExpect(
+                        jsonPath("$.name")
+                                .value("Rock Concert")
+                )
+                .andExpect(
+                        jsonPath("$.description")
+                                .value("Live concert")
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("DRAFT")
+                );
 
         verify(eventService).create(any());
     }
 
     @Test
-    void create_shouldReturn400_whenValidationFails() throws Exception {
+    void create_shouldReturn400_whenValidationFails()
+            throws Exception {
 
-        mockMvc.perform(post("/api/v1/events").contentType(MediaType.APPLICATION_JSON).content("""
-                        {
-                          "name": "",
-                          "description": "",
-                          "scheduledAt": "2020-01-01T00:00:00Z"
-                        }
-                        """)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400)).andExpect(jsonPath("$.error").value("Bad Request")).andExpect(jsonPath("$.message").value("Validation failed")).andExpect(jsonPath("$.path").value("/api/v1/events"))
+        mockMvc.perform(
+                        post(EVENTS_URL)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(INVALID_REQUEST)
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Bad Request")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value("Validation failed")
+                )
+                .andExpect(
+                        jsonPath("$.path")
+                                .value(EVENTS_URL)
+                )
+                .andExpect(
+                        jsonPath("$.errors.name")
+                                .isArray()
+                )
+                .andExpect(
+                        jsonPath("$.errors.name[0]")
+                                .value("Name must not be blank")
+                )
+                .andExpect(
+                        jsonPath("$.errors.scheduledAt")
+                                .isArray()
+                )
+                .andExpect(
+                        jsonPath("$.errors.scheduledAt[0]")
+                                .value(
+                                        "Scheduled time must be in the future"
+                                )
+                );
 
-                // Map<String, List<String>>
-                .andExpect(jsonPath("$.errors.name").isArray()).andExpect(jsonPath("$.errors.name[0]").value("Name must not be blank"))
+        verify(
+                eventService,
+                never()
+        ).create(any());
+    }
 
-                .andExpect(jsonPath("$.errors.scheduledAt").isArray()).andExpect(jsonPath("$.errors.scheduledAt[0]").value("Scheduled time must be in the future"));
+    @Test
+    void create_shouldReturn409_whenDataIntegrityViolationOccurs()
+            throws Exception {
 
-        verify(eventService, never()).create(any());
+        when(eventService.create(any()))
+                .thenThrow(
+                        new DataIntegrityViolationException(
+                                "Duplicate event"
+                        )
+                );
+
+        mockMvc.perform(
+                        post(EVENTS_URL)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST)
+                )
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(409)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Conflict")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "The request could not be completed "
+                                                + "because it violates a data constraint."
+                                )
+                )
+                .andExpect(
+                        jsonPath("$.errors")
+                                .isEmpty()
+                );
+
+        verify(eventService).create(any());
     }
 
     // =========================================================
@@ -94,56 +274,665 @@ class EventControllerTest {
     @Test
     void getById_shouldReturn200() throws Exception {
 
-        when(eventService.getById(eventId)).thenReturn(response());
+        when(eventService.getById(EVENT_ID))
+                .thenReturn(response());
 
-        mockMvc.perform(get("/api/v1/events/{id}", eventId)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(eventId.toString())).andExpect(jsonPath("$.version").value(0)).andExpect(jsonPath("$.name").value("Rock Concert")).andExpect(jsonPath("$.status").value("DRAFT"));
+        mockMvc.perform(
+                        get(EVENT_URL)
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.id")
+                                .value(EVENT_ID.toString())
+                )
+                .andExpect(
+                        jsonPath("$.version")
+                                .value(0)
+                )
+                .andExpect(
+                        jsonPath("$.name")
+                                .value("Rock Concert")
+                )
+                .andExpect(
+                        jsonPath("$.description")
+                                .value("Live concert")
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("DRAFT")
+                );
 
-        verify(eventService).getById(eventId);
+        verify(eventService).getById(EVENT_ID);
     }
 
     @Test
-    void getById_shouldReturn404_whenMissing() throws Exception {
+    void getById_shouldReturn404_whenEventDoesNotExist()
+            throws Exception {
 
-        when(eventService.getById(eventId)).thenThrow(new EventNotFoundException(eventId));
+        when(eventService.getById(EVENT_ID))
+                .thenThrow(
+                        new EventNotFoundException(EVENT_ID)
+                );
 
-        mockMvc.perform(get("/api/v1/events/{id}", eventId)).andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404)).andExpect(jsonPath("$.error").value("Not Found")).andExpect(jsonPath("$.path").value("/api/v1/events/" + eventId))
+        mockMvc.perform(
+                        get(EVENT_URL)
+                )
+                .andExpect(status().isNotFound())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(404)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Not Found")
+                )
+                .andExpect(
+                        jsonPath("$.path")
+                                .value(EVENT_URL)
+                )
+                .andExpect(
+                        jsonPath("$.errors")
+                                .isEmpty()
+                );
 
-                // Empty error map
-                .andExpect(jsonPath("$.errors").isEmpty());
-
-        verify(eventService).getById(eventId);
+        verify(eventService).getById(EVENT_ID);
     }
 
     @Test
-    void getById_shouldReturn400_whenIdIsInvalid() throws Exception {
+    void getById_shouldReturn400_whenIdIsInvalid()
+            throws Exception {
 
-        mockMvc.perform(get("/api/v1/events/{id}", "not-a-uuid")).andExpect(status().isBadRequest());
+        mockMvc.perform(
+                        get(EVENTS_URL + "/not-a-uuid")
+                )
+                .andExpect(status().isBadRequest());
 
-        verify(eventService, never()).getById(any());
+        verify(
+                eventService,
+                never()
+        ).getById(any());
+    }
+
+    @Test
+    void getById_shouldReturn500_whenUnexpectedExceptionOccurs()
+            throws Exception {
+
+        when(eventService.getById(EVENT_ID))
+                .thenThrow(
+                        new RuntimeException(
+                                "Database connection failed"
+                        )
+                );
+
+        mockMvc.perform(
+                        get(EVENT_URL)
+                )
+                .andExpect(status().isInternalServerError())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(500)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Internal Server Error")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "An unexpected error occurred."
+                                )
+                )
+                .andExpect(
+                        jsonPath("$.path")
+                                .value(EVENT_URL)
+                )
+                .andExpect(
+                        jsonPath("$.errors")
+                                .isEmpty()
+                );
+
+        verify(eventService).getById(EVENT_ID);
     }
 
     // =========================================================
-    // GET ALL
+    // GET ALL - KEYSET PAGINATION + STATUS FILTER
     // =========================================================
 
     @Test
-    void getAll_shouldReturn200() throws Exception {
+    void getAll_shouldReturn200_withDefaultLimit()
+            throws Exception {
 
-        when(eventService.getAll()).thenReturn(List.of(response()));
+        when(
+                eventService.getAll(
+                        null,
+                        20,
+                        null
+                )
+        ).thenReturn(pageResponse());
 
-        mockMvc.perform(get("/api/v1/events")).andExpect(status().isOk()).andExpect(jsonPath("$").isArray()).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value(eventId.toString())).andExpect(jsonPath("$[0].name").value("Rock Concert")).andExpect(jsonPath("$[0].status").value("DRAFT"));
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items")
+                                .isArray()
+                )
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.items[0].id")
+                                .value(EVENT_ID.toString())
+                )
+                .andExpect(
+                        jsonPath("$.items[0].status")
+                                .value("DRAFT")
+                )
+                .andExpect(
+                        jsonPath("$.nextCursor")
+                                .value(NEXT_CURSOR)
+                );
 
-        verify(eventService).getAll();
+        verify(
+                eventService
+        ).getAll(
+                null,
+                20,
+                null
+        );
     }
 
     @Test
-    void getAll_shouldReturnEmptyList_whenNoEventsExist() throws Exception {
+    void getAll_shouldReturn200_withStatusFilter()
+            throws Exception {
 
-        when(eventService.getAll()).thenReturn(List.of());
+        EventResponse published =
+                response(
+                        1L,
+                        "Rock Concert",
+                        "Live concert",
+                        EventStatus.PUBLISHED
+                );
 
-        mockMvc.perform(get("/api/v1/events")).andExpect(status().isOk()).andExpect(jsonPath("$").isArray()).andExpect(jsonPath("$.length()").value(0));
+        EventPageResponse page =
+                new EventPageResponse(
+                        List.of(published),
+                        NEXT_CURSOR
+                );
 
-        verify(eventService).getAll();
+        when(
+                eventService.getAll(
+                        EventStatus.PUBLISHED,
+                        20,
+                        null
+                )
+        ).thenReturn(page);
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param(
+                                        "status",
+                                        "PUBLISHED"
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.items[0].status")
+                                .value("PUBLISHED")
+                )
+                .andExpect(
+                        jsonPath("$.nextCursor")
+                                .value(NEXT_CURSOR)
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                EventStatus.PUBLISHED,
+                20,
+                null
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn200_withStatusAndCustomLimit()
+            throws Exception {
+
+        when(
+                eventService.getAll(
+                        EventStatus.DRAFT,
+                        50,
+                        null
+                )
+        ).thenReturn(pageResponse());
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param("status", "DRAFT")
+                                .param("limit", "50")
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(1)
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                EventStatus.DRAFT,
+                50,
+                null
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn200_withAfterCursor()
+            throws Exception {
+
+        EventPageResponse page =
+                new EventPageResponse(
+                        List.of(response()),
+                        "next-cursor-2"
+                );
+
+        when(
+                eventService.getAll(
+                        null,
+                        20,
+                        PREVIOUS_CURSOR
+                )
+        ).thenReturn(page);
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param(
+                                        "after",
+                                        PREVIOUS_CURSOR
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.nextCursor")
+                                .value("next-cursor-2")
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                null,
+                20,
+                PREVIOUS_CURSOR
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn200_withStatusAndAfterCursor()
+            throws Exception {
+
+        EventPageResponse page =
+                new EventPageResponse(
+                        List.of(
+                                response(
+                                        1L,
+                                        "Rock Concert",
+                                        "Live concert",
+                                        EventStatus.PUBLISHED
+                                )
+                        ),
+                        "next-cursor-2"
+                );
+
+        when(
+                eventService.getAll(
+                        EventStatus.PUBLISHED,
+                        20,
+                        PREVIOUS_CURSOR
+                )
+        ).thenReturn(page);
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param(
+                                        "status",
+                                        "PUBLISHED"
+                                )
+                                .param(
+                                        "after",
+                                        PREVIOUS_CURSOR
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.items[0].status")
+                                .value("PUBLISHED")
+                )
+                .andExpect(
+                        jsonPath("$.nextCursor")
+                                .value("next-cursor-2")
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                EventStatus.PUBLISHED,
+                20,
+                PREVIOUS_CURSOR
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn200_withCustomLimitAndCursor()
+            throws Exception {
+
+        when(
+                eventService.getAll(
+                        null,
+                        50,
+                        PREVIOUS_CURSOR
+                )
+        ).thenReturn(pageResponse());
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param("limit", "50")
+                                .param(
+                                        "after",
+                                        PREVIOUS_CURSOR
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(1)
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                null,
+                50,
+                PREVIOUS_CURSOR
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn200_withEmptyPage()
+            throws Exception {
+
+        when(
+                eventService.getAll(
+                        null,
+                        20,
+                        null
+                )
+        ).thenReturn(emptyPageResponse());
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(0)
+                )
+                .andExpect(
+                        jsonPath("$.nextCursor")
+                                .doesNotExist()
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                null,
+                20,
+                null
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn400_whenInvalidStatus()
+            throws Exception {
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param(
+                                        "status",
+                                        "INVALID"
+                                )
+                )
+                .andExpect(status().isBadRequest());
+
+        verify(
+                eventService,
+                never()
+        ).getAll(
+                any(),
+                any(Integer.class),
+                any()
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn400_whenLimitIsZero()
+            throws Exception {
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param("limit", "0")
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value("Validation failed")
+                );
+
+        verify(
+                eventService,
+                never()
+        ).getAll(
+                any(),
+                any(Integer.class),
+                any()
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn400_whenLimitExceedsMaximum()
+            throws Exception {
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param("limit", "101")
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value("Validation failed")
+                );
+
+        verify(
+                eventService,
+                never()
+        ).getAll(
+                any(),
+                any(Integer.class),
+                any()
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn400_whenLimitIsNotANumber()
+            throws Exception {
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param("limit", "abc")
+                )
+                .andExpect(status().isBadRequest());
+
+        verify(
+                eventService,
+                never()
+        ).getAll(
+                any(),
+                any(Integer.class),
+                any()
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn500_whenServiceFails()
+            throws Exception {
+
+        when(
+                eventService.getAll(
+                        null,
+                        20,
+                        null
+                )
+        ).thenThrow(
+                new RuntimeException(
+                        "Database failure"
+                )
+        );
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                )
+                .andExpect(status().isInternalServerError())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(500)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Internal Server Error")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "An unexpected error occurred."
+                                )
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                null,
+                20,
+                null
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn200_whenCursorPointsToLastPage()
+            throws Exception {
+
+        when(
+                eventService.getAll(
+                        null,
+                        20,
+                        PREVIOUS_CURSOR
+                )
+        ).thenReturn(emptyPageResponse());
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param(
+                                        "after",
+                                        PREVIOUS_CURSOR
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.items.length()")
+                                .value(0)
+                )
+                .andExpect(
+                        jsonPath("$.nextCursor")
+                                .doesNotExist()
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                null,
+                20,
+                PREVIOUS_CURSOR
+        );
+    }
+
+    @Test
+    void getAll_shouldReturn400_whenCursorIsInvalid()
+            throws Exception {
+
+        String invalidCursor = "garbage";
+
+        when(
+                eventService.getAll(
+                        null,
+                        20,
+                        invalidCursor
+                )
+        ).thenThrow(
+                new CursorDecodingException(
+                        "Invalid pagination cursor."
+                )
+        );
+
+        mockMvc.perform(
+                        get(EVENTS_URL)
+                                .param(
+                                        "after",
+                                        invalidCursor
+                                )
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Bad Request")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "Invalid pagination cursor."
+                                )
+                );
+
+        verify(
+                eventService
+        ).getAll(
+                null,
+                20,
+                invalidCursor
+        );
     }
 
     // =========================================================
@@ -153,69 +942,206 @@ class EventControllerTest {
     @Test
     void update_shouldReturn200() throws Exception {
 
-        EventResponse updated = new EventResponse(eventId, 1L, "Rock Concert", "Live concert 2x", Instant.parse("2026-12-20T19:00:00Z"), EventStatus.DRAFT);
+        EventResponse updated =
+                response(
+                        1L,
+                        "Rock Concert",
+                        "Live concert 2x",
+                        EventStatus.DRAFT
+                );
 
-        when(eventService.update(eq(eventId), any())).thenReturn(updated);
+        when(
+                eventService.update(
+                        eq(EVENT_ID),
+                        any()
+                )
+        ).thenReturn(updated);
 
-        mockMvc.perform(put("/api/v1/events/{id}", eventId).contentType(MediaType.APPLICATION_JSON).content("""
-                {
-                  "name": "Rock Concert",
-                  "description": "Live concert 2x",
-                  "scheduledAt": "2026-12-20T19:00:00Z"
-                }
-                """)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(eventId.toString())).andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.description").value("Live concert 2x")).andExpect(jsonPath("$.status").value("DRAFT"));
+        mockMvc.perform(
+                        put(EVENT_URL)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(UPDATED_REQUEST)
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.id")
+                                .value(EVENT_ID.toString())
+                )
+                .andExpect(
+                        jsonPath("$.version")
+                                .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.description")
+                                .value("Live concert 2x")
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("DRAFT")
+                );
 
-        verify(eventService).update(eq(eventId), any());
+        verify(
+                eventService
+        ).update(
+                eq(EVENT_ID),
+                any()
+        );
     }
 
     @Test
-    void update_shouldReturn400_whenValidationFails() throws Exception {
+    void update_shouldReturn400_whenValidationFails()
+            throws Exception {
 
-        mockMvc.perform(put("/api/v1/events/{id}", eventId).contentType(MediaType.APPLICATION_JSON).content("""
-                        {
-                          "name": "",
-                          "description": "",
-                          "scheduledAt": "2020-01-01T00:00:00Z"
-                        }
-                        """)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400)).andExpect(jsonPath("$.message").value("Validation failed"))
+        mockMvc.perform(
+                        put(EVENT_URL)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(INVALID_REQUEST)
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value("Validation failed")
+                );
 
-                .andExpect(jsonPath("$.errors.name").isArray()).andExpect(jsonPath("$.errors.name[0]").value("Name must not be blank"))
-
-                .andExpect(jsonPath("$.errors.scheduledAt").isArray()).andExpect(jsonPath("$.errors.scheduledAt[0]").value("Scheduled time must be in the future"));
-
-        verify(eventService, never()).update(eq(eventId), any());
+        verify(
+                eventService,
+                never()
+        ).update(
+                eq(EVENT_ID),
+                any()
+        );
     }
 
     @Test
-    void update_shouldReturn404_whenEventDoesNotExist() throws Exception {
+    void update_shouldReturn404_whenEventDoesNotExist()
+            throws Exception {
 
-        when(eventService.update(eq(eventId), any())).thenThrow(new EventNotFoundException(eventId));
+        when(
+                eventService.update(
+                        eq(EVENT_ID),
+                        any()
+                )
+        ).thenThrow(
+                new EventNotFoundException(EVENT_ID)
+        );
 
-        mockMvc.perform(put("/api/v1/events/{id}", eventId).contentType(MediaType.APPLICATION_JSON).content("""
-                {
-                  "name": "Rock Concert",
-                  "description": "Live concert",
-                  "scheduledAt": "2026-12-20T19:00:00Z"
-                }
-                """)).andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404)).andExpect(jsonPath("$.error").value("Not Found")).andExpect(jsonPath("$.errors").isEmpty());
+        mockMvc.perform(
+                        put(EVENT_URL)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(VALID_REQUEST)
+                )
+                .andExpect(status().isNotFound())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(404)
+                )
+                .andExpect(
+                        jsonPath("$.error")
+                                .value("Not Found")
+                );
 
-        verify(eventService).update(eq(eventId), any());
+        verify(
+                eventService
+        ).update(
+                eq(EVENT_ID),
+                any()
+        );
     }
 
     @Test
-    void update_shouldReturn409_whenOptimisticLockingFails() throws Exception {
+    void update_shouldReturn409_whenEventStateIsInvalid()
+            throws Exception {
 
-        when(eventService.update(eq(eventId), any())).thenThrow(new ObjectOptimisticLockingFailureException(EventEntity.class, eventId));
+        String message =
+                "Completed events cannot be modified";
 
-        mockMvc.perform(put("/api/v1/events/{id}", eventId).contentType(MediaType.APPLICATION_JSON).content("""
-                {
-                  "name": "Rock Concert",
-                  "description": "Updated concert",
-                  "scheduledAt": "2026-12-20T19:00:00Z"
-                }
-                """)).andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409)).andExpect(jsonPath("$.error").value("Conflict")).andExpect(jsonPath("$.message").value("The event was modified by another request. " + "Please reload the event and try again.")).andExpect(jsonPath("$.errors").isEmpty());
+        when(
+                eventService.update(
+                        eq(EVENT_ID),
+                        any()
+                )
+        ).thenThrow(
+                new InvalidEventStateException(message)
+        );
 
-        verify(eventService).update(eq(eventId), any());
+        mockMvc.perform(
+                        put(EVENT_URL)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(VALID_REQUEST)
+                )
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(409)
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(message)
+                );
+
+        verify(
+                eventService
+        ).update(
+                eq(EVENT_ID),
+                any()
+        );
+    }
+
+    @Test
+    void update_shouldReturn409_whenOptimisticLockingFails()
+            throws Exception {
+
+        when(
+                eventService.update(
+                        eq(EVENT_ID),
+                        any()
+                )
+        ).thenThrow(
+                new ObjectOptimisticLockingFailureException(
+                        EventEntity.class,
+                        EVENT_ID
+                )
+        );
+
+        mockMvc.perform(
+                        put(EVENT_URL)
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(VALID_REQUEST)
+                )
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value(409)
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "The event was modified by another "
+                                                + "request. Please reload the "
+                                                + "event and try again."
+                                )
+                );
+
+        verify(
+                eventService
+        ).update(
+                eq(EVENT_ID),
+                any()
+        );
     }
 
     // =========================================================
@@ -225,33 +1151,68 @@ class EventControllerTest {
     @Test
     void publish_shouldReturn200() throws Exception {
 
-        EventResponse published = new EventResponse(eventId, 1L, "Rock Concert", "Live concert", Instant.parse("2026-12-20T19:00:00Z"), EventStatus.PUBLISHED);
+        EventResponse published =
+                response(
+                        1L,
+                        "Rock Concert",
+                        "Live concert",
+                        EventStatus.PUBLISHED
+                );
 
-        when(eventService.publish(eventId)).thenReturn(published);
+        when(eventService.publish(EVENT_ID))
+                .thenReturn(published);
 
-        mockMvc.perform(post("/api/v1/events/{id}/publish", eventId)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(eventId.toString())).andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.status").value("PUBLISHED"));
+        mockMvc.perform(
+                        post(EVENT_URL + "/publish")
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("PUBLISHED")
+                );
 
-        verify(eventService).publish(eventId);
+        verify(eventService).publish(EVENT_ID);
     }
 
     @Test
-    void publish_shouldReturn404_whenEventDoesNotExist() throws Exception {
+    void publish_shouldReturn404_whenEventDoesNotExist()
+            throws Exception {
 
-        when(eventService.publish(eventId)).thenThrow(new EventNotFoundException(eventId));
+        when(eventService.publish(EVENT_ID))
+                .thenThrow(
+                        new EventNotFoundException(EVENT_ID)
+                );
 
-        mockMvc.perform(post("/api/v1/events/{id}/publish", eventId)).andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404)).andExpect(jsonPath("$.error").value("Not Found")).andExpect(jsonPath("$.errors").isEmpty());
+        mockMvc.perform(
+                        post(EVENT_URL + "/publish")
+                )
+                .andExpect(status().isNotFound());
 
-        verify(eventService).publish(eventId);
+        verify(eventService).publish(EVENT_ID);
     }
 
     @Test
-    void publish_shouldReturn409_whenEventStateIsInvalid() throws Exception {
+    void publish_shouldReturn409_whenEventStateIsInvalid()
+            throws Exception {
 
-        when(eventService.publish(eventId)).thenThrow(new IllegalStateException("Only draft events can be published"));
+        String message =
+                "Event must be in DRAFT state but is currently PUBLISHED";
 
-        mockMvc.perform(post("/api/v1/events/{id}/publish", eventId)).andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409)).andExpect(jsonPath("$.error").value("Conflict")).andExpect(jsonPath("$.message").value("Only draft events can be published")).andExpect(jsonPath("$.errors").isEmpty());
+        when(eventService.publish(EVENT_ID))
+                .thenThrow(
+                        new InvalidEventStateException(message)
+                );
 
-        verify(eventService).publish(eventId);
+        mockMvc.perform(
+                        post(EVENT_URL + "/publish")
+                )
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(message)
+                );
+
+        verify(eventService).publish(EVENT_ID);
     }
 
     // =========================================================
@@ -261,33 +1222,68 @@ class EventControllerTest {
     @Test
     void cancel_shouldReturn200() throws Exception {
 
-        EventResponse cancelled = new EventResponse(eventId, 1L, "Rock Concert", "Live concert", Instant.parse("2026-12-20T19:00:00Z"), EventStatus.CANCELLED);
+        EventResponse cancelled =
+                response(
+                        1L,
+                        "Rock Concert",
+                        "Live concert",
+                        EventStatus.CANCELLED
+                );
 
-        when(eventService.cancel(eventId)).thenReturn(cancelled);
+        when(eventService.cancel(EVENT_ID))
+                .thenReturn(cancelled);
 
-        mockMvc.perform(post("/api/v1/events/{id}/cancel", eventId)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(eventId.toString())).andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.status").value("CANCELLED"));
+        mockMvc.perform(
+                        post(EVENT_URL + "/cancel")
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("CANCELLED")
+                );
 
-        verify(eventService).cancel(eventId);
+        verify(eventService).cancel(EVENT_ID);
     }
 
     @Test
-    void cancel_shouldReturn404_whenEventDoesNotExist() throws Exception {
+    void cancel_shouldReturn404_whenEventDoesNotExist()
+            throws Exception {
 
-        when(eventService.cancel(eventId)).thenThrow(new EventNotFoundException(eventId));
+        when(eventService.cancel(EVENT_ID))
+                .thenThrow(
+                        new EventNotFoundException(EVENT_ID)
+                );
 
-        mockMvc.perform(post("/api/v1/events/{id}/cancel", eventId)).andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404)).andExpect(jsonPath("$.error").value("Not Found")).andExpect(jsonPath("$.errors").isEmpty());
+        mockMvc.perform(
+                        post(EVENT_URL + "/cancel")
+                )
+                .andExpect(status().isNotFound());
 
-        verify(eventService).cancel(eventId);
+        verify(eventService).cancel(EVENT_ID);
     }
 
     @Test
-    void cancel_shouldReturn409_whenEventStateIsInvalid() throws Exception {
+    void cancel_shouldReturn409_whenEventStateIsInvalid()
+            throws Exception {
 
-        when(eventService.cancel(eventId)).thenThrow(new IllegalStateException("Event cannot be cancelled"));
+        String message =
+                "Completed events cannot be cancelled";
 
-        mockMvc.perform(post("/api/v1/events/{id}/cancel", eventId)).andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409)).andExpect(jsonPath("$.error").value("Conflict")).andExpect(jsonPath("$.message").value("Event cannot be cancelled")).andExpect(jsonPath("$.errors").isEmpty());
+        when(eventService.cancel(EVENT_ID))
+                .thenThrow(
+                        new InvalidEventStateException(message)
+                );
 
-        verify(eventService).cancel(eventId);
+        mockMvc.perform(
+                        post(EVENT_URL + "/cancel")
+                )
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(message)
+                );
+
+        verify(eventService).cancel(EVENT_ID);
     }
 
     // =========================================================
@@ -297,33 +1293,68 @@ class EventControllerTest {
     @Test
     void complete_shouldReturn200() throws Exception {
 
-        EventResponse completed = new EventResponse(eventId, 2L, "Rock Concert", "Live concert", Instant.parse("2026-12-20T19:00:00Z"), EventStatus.COMPLETED);
+        EventResponse completed =
+                response(
+                        2L,
+                        "Rock Concert",
+                        "Live concert",
+                        EventStatus.COMPLETED
+                );
 
-        when(eventService.complete(eventId)).thenReturn(completed);
+        when(eventService.complete(EVENT_ID))
+                .thenReturn(completed);
 
-        mockMvc.perform(post("/api/v1/events/{id}/complete", eventId)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(eventId.toString())).andExpect(jsonPath("$.version").value(2)).andExpect(jsonPath("$.status").value("COMPLETED"));
+        mockMvc.perform(
+                        post(EVENT_URL + "/complete")
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("COMPLETED")
+                );
 
-        verify(eventService).complete(eventId);
+        verify(eventService).complete(EVENT_ID);
     }
 
     @Test
-    void complete_shouldReturn404_whenEventDoesNotExist() throws Exception {
+    void complete_shouldReturn404_whenEventDoesNotExist()
+            throws Exception {
 
-        when(eventService.complete(eventId)).thenThrow(new EventNotFoundException(eventId));
+        when(eventService.complete(EVENT_ID))
+                .thenThrow(
+                        new EventNotFoundException(EVENT_ID)
+                );
 
-        mockMvc.perform(post("/api/v1/events/{id}/complete", eventId)).andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404)).andExpect(jsonPath("$.error").value("Not Found")).andExpect(jsonPath("$.errors").isEmpty());
+        mockMvc.perform(
+                        post(EVENT_URL + "/complete")
+                )
+                .andExpect(status().isNotFound());
 
-        verify(eventService).complete(eventId);
+        verify(eventService).complete(EVENT_ID);
     }
 
     @Test
-    void complete_shouldReturn409_whenEventStateIsInvalid() throws Exception {
+    void complete_shouldReturn409_whenEventStateIsInvalid()
+            throws Exception {
 
-        when(eventService.complete(eventId)).thenThrow(new IllegalStateException("Event cannot be completed"));
+        String message =
+                "Event must be in PUBLISHED state but is currently DRAFT";
 
-        mockMvc.perform(post("/api/v1/events/{id}/complete", eventId)).andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409)).andExpect(jsonPath("$.error").value("Conflict")).andExpect(jsonPath("$.message").value("Event cannot be completed")).andExpect(jsonPath("$.errors").isEmpty());
+        when(eventService.complete(EVENT_ID))
+                .thenThrow(
+                        new InvalidEventStateException(message)
+                );
 
-        verify(eventService).complete(eventId);
+        mockMvc.perform(
+                        post(EVENT_URL + "/complete")
+                )
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(message)
+                );
+
+        verify(eventService).complete(EVENT_ID);
     }
 
     // =========================================================
@@ -333,52 +1364,29 @@ class EventControllerTest {
     @Test
     void delete_shouldReturn204() throws Exception {
 
-        mockMvc.perform(delete("/api/v1/events/{id}", eventId)).andExpect(status().isNoContent());
+        mockMvc.perform(
+                        delete(EVENT_URL)
+                )
+                .andExpect(status().isNoContent());
 
-        verify(eventService).delete(eventId);
+        verify(eventService).delete(EVENT_ID);
     }
 
     @Test
-    void delete_shouldReturn404_whenEventDoesNotExist() throws Exception {
+    void delete_shouldReturn404_whenEventDoesNotExist()
+            throws Exception {
 
-        doThrow(new EventNotFoundException(eventId)).when(eventService).delete(eventId);
+        doThrow(
+                new EventNotFoundException(EVENT_ID)
+        )
+                .when(eventService)
+                .delete(EVENT_ID);
 
-        mockMvc.perform(delete("/api/v1/events/{id}", eventId)).andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404)).andExpect(jsonPath("$.error").value("Not Found")).andExpect(jsonPath("$.errors").isEmpty());
+        mockMvc.perform(
+                        delete(EVENT_URL)
+                )
+                .andExpect(status().isNotFound());
 
-        verify(eventService).delete(eventId);
-    }
-
-    // =========================================================
-    // DATA INTEGRITY
-    // =========================================================
-
-    @Test
-    void create_shouldReturn409_whenDataIntegrityViolationOccurs() throws Exception {
-
-        when(eventService.create(any())).thenThrow(new DataIntegrityViolationException("Duplicate event"));
-
-        mockMvc.perform(post("/api/v1/events").contentType(MediaType.APPLICATION_JSON).content("""
-                {
-                  "name": "Rock Concert",
-                  "description": "Live concert",
-                  "scheduledAt": "2026-12-20T19:00:00Z"
-                }
-                """)).andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409)).andExpect(jsonPath("$.error").value("Conflict")).andExpect(jsonPath("$.message").value("The request could not be completed " + "because it violates a data constraint.")).andExpect(jsonPath("$.errors").isEmpty());
-
-        verify(eventService).create(any());
-    }
-
-    // =========================================================
-    // UNEXPECTED EXCEPTION
-    // =========================================================
-
-    @Test
-    void getById_shouldReturn500_whenUnexpectedExceptionOccurs() throws Exception {
-
-        when(eventService.getById(eventId)).thenThrow(new RuntimeException("Database connection failed"));
-
-        mockMvc.perform(get("/api/v1/events/{id}", eventId)).andExpect(status().isInternalServerError()).andExpect(jsonPath("$.status").value(500)).andExpect(jsonPath("$.error").value("Internal Server Error")).andExpect(jsonPath("$.message").value("An unexpected error occurred.")).andExpect(jsonPath("$.path").value("/api/v1/events/" + eventId)).andExpect(jsonPath("$.errors").isEmpty());
-
-        verify(eventService).getById(eventId);
+        verify(eventService).delete(EVENT_ID);
     }
 }

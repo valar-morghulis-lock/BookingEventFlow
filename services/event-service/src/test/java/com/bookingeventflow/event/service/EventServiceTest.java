@@ -1,12 +1,15 @@
 package com.bookingeventflow.event.service;
 
+import com.bookingeventflow.common.pagination.CursorCodec;
 import com.bookingeventflow.event.domain.model.Event;
 import com.bookingeventflow.event.domain.model.EventStatus;
 import com.bookingeventflow.event.entity.EventEntity;
 import com.bookingeventflow.event.exception.EventNotFoundException;
 import com.bookingeventflow.event.mapper.EventMapper;
+import com.bookingeventflow.event.pagination.EventCursor;
 import com.bookingeventflow.event.presentation.request.CreateEventRequest;
 import com.bookingeventflow.event.presentation.request.UpdateEventRequest;
+import com.bookingeventflow.event.presentation.response.EventPageResponse;
 import com.bookingeventflow.event.presentation.response.EventResponse;
 import com.bookingeventflow.event.repository.EventRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,19 +21,63 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("EventService Unit Tests")
+@DisplayName("EventService")
 class EventServiceTest {
+
+    private static final int DEFAULT_LIMIT = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+
+    private static final Instant SCHEDULED_AT =
+            Instant.parse("2026-12-20T19:00:00Z");
+
+    private static final Instant SECOND_SCHEDULED_AT =
+            Instant.parse("2026-12-21T19:00:00Z");
+
+    private static final Instant THIRD_SCHEDULED_AT =
+            Instant.parse("2026-12-22T19:00:00Z");
+
+    private static final String EVENT_NAME =
+            "Rock Concert";
+
+    private static final String EVENT_DESCRIPTION =
+            "Live concert";
+
+    private static final String SECOND_EVENT_NAME =
+            "Jazz Festival";
+
+    private static final String SECOND_EVENT_DESCRIPTION =
+            "Live jazz";
+
+    private static final String THIRD_EVENT_NAME =
+            "Classical Night";
+
+    private static final String THIRD_EVENT_DESCRIPTION =
+            "Classical music";
+
+    private static final String ENCODED_CURSOR =
+            "encoded-cursor";
 
     @Mock
     private EventRepository eventRepository;
@@ -38,157 +85,29 @@ class EventServiceTest {
     @Mock
     private EventMapper eventMapper;
 
+    @Mock
+    private CursorCodec<EventCursor> cursorCodec;
+
+    @Mock
+    private Event domainEvent;
+
     @InjectMocks
     private EventService eventService;
 
-    private UUID eventId;
-    private Instant scheduledAt;
-
-    private EventEntity entity;
-    private EventResponse response;
-    private Event domainEvent;
+    private EventEntity eventEntity;
+    private EventResponse eventResponse;
 
     @BeforeEach
     void setUp() {
 
-        eventId = UUID.fromString(
-                "512c5d0f-a416-4430-9265-4069b1637964"
-        );
-
-        scheduledAt = Instant.parse(
-                "2026-12-20T19:00:00Z"
-        );
-
-        entity = persistedEntity(
-                eventId,
-                0L,
-                "Rock Concert",
-                "Live concert",
-                scheduledAt,
+        eventEntity = event(
+                EVENT_NAME,
+                EVENT_DESCRIPTION,
+                SCHEDULED_AT,
                 EventStatus.DRAFT
         );
 
-        response = new EventResponse(
-                eventId,
-                0L,
-                "Rock Concert",
-                "Live concert",
-                scheduledAt,
-                EventStatus.DRAFT
-        );
-
-        domainEvent = mock(Event.class);
-    }
-
-    // =====================================================================
-    // TEST FIXTURES
-    // =====================================================================
-
-    /**
-     * Creates an EventEntity representing an entity that has already been
-     * persisted by Hibernate.
-     *
-     * Unit tests do not run Hibernate, therefore:
-     *
-     * - @GeneratedValue does not generate the ID
-     * - @Version does not initialize the version
-     *
-     * We explicitly initialize both values here.
-     */
-    private EventEntity persistedEntity(
-            UUID id,
-            Long version,
-            String name,
-            String description,
-            Instant scheduledAt,
-            EventStatus status
-    ) {
-
-        EventEntity entity = new EventEntity(
-                name,
-                description,
-                scheduledAt,
-                status
-        );
-
-        setField(
-                entity,
-                "id",
-                id
-        );
-
-        setField(
-                entity,
-                "version",
-                version
-        );
-
-        return entity;
-    }
-
-    /**
-     * Creates an EventEntity representing a brand-new entity before
-     * persistence.
-     *
-     * In real production code Hibernate would generate the ID and initialize
-     * the @Version field during persistence.
-     *
-     * For service unit tests we generally don't need to reproduce that
-     * behavior unless the test explicitly verifies the entity before/after
-     * persistence.
-     */
-    private EventEntity newEntity(
-            UUID id,
-            String name,
-            String description,
-            Instant scheduledAt,
-            EventStatus status
-    ) {
-
-        return persistedEntity(
-                id,
-                0L,
-                name,
-                description,
-                scheduledAt,
-                status
-        );
-    }
-
-    /**
-     * Test-only reflection helper.
-     *
-     * Production code should NOT use this.
-     *
-     * It is required here because EventEntity intentionally does not expose
-     * public setters for persistence-managed fields such as ID and version.
-     */
-    private void setField(
-            EventEntity entity,
-            String fieldName,
-            Object value
-    ) {
-
-        try {
-
-            var field =
-                    EventEntity.class.getDeclaredField(fieldName);
-
-            field.setAccessible(true);
-
-            field.set(
-                    entity,
-                    value
-            );
-
-        } catch (ReflectiveOperationException e) {
-
-            throw new AssertionError(
-                    "Could not initialize EventEntity field: "
-                            + fieldName,
-                    e
-            );
-        }
+        eventResponse = response(eventEntity);
     }
 
     // =====================================================================
@@ -196,59 +115,38 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Create Event")
+    @DisplayName("create")
     class CreateTests {
 
         @Test
-        @DisplayName("Should create and return a new event")
-        void create_shouldCreateAndReturnEvent() {
+        @DisplayName("should create and return event")
+        void shouldCreateAndReturnEvent() {
 
             CreateEventRequest request =
-                    new CreateEventRequest(
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt
+                    createRequest(
+                            EVENT_NAME,
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT
                     );
 
             EventEntity newEntity =
-                    newEntity(
-                            eventId,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
-                            EventStatus.DRAFT
-                    );
-
-            EventEntity savedEntity =
-                    persistedEntity(
-                            eventId,
-                            0L,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
-                            EventStatus.DRAFT
-                    );
+                    mock(EventEntity.class);
 
             when(eventMapper.toNewEntity(any(Event.class)))
                     .thenReturn(newEntity);
 
             when(eventRepository.saveAndFlush(newEntity))
-                    .thenReturn(savedEntity);
+                    .thenReturn(eventEntity);
 
-            when(eventMapper.toResponse(savedEntity))
-                    .thenReturn(response);
+            when(eventMapper.toResponse(eventEntity))
+                    .thenReturn(eventResponse);
 
             EventResponse result =
                     eventService.create(request);
 
             assertEquals(
-                    response,
+                    eventResponse,
                     result
-            );
-
-            assertEquals(
-                    eventId,
-                    result.id()
             );
 
             verify(eventMapper)
@@ -258,33 +156,22 @@ class EventServiceTest {
                     .saveAndFlush(newEntity);
 
             verify(eventMapper)
-                    .toResponse(savedEntity);
-
-            verifyNoMoreInteractions(
-                    eventRepository,
-                    eventMapper
-            );
+                    .toResponse(eventEntity);
         }
 
         @Test
-        @DisplayName("Should create entity with version zero")
-        void create_shouldCreateEntityWithVersionZero() {
+        @DisplayName("should persist mapped entity")
+        void shouldPersistMappedEntity() {
 
             CreateEventRequest request =
-                    new CreateEventRequest(
+                    createRequest(
                             "New Event",
                             "Description",
-                            scheduledAt
+                            SCHEDULED_AT
                     );
 
             EventEntity newEntity =
-                    newEntity(
-                            eventId,
-                            "New Event",
-                            "Description",
-                            scheduledAt,
-                            EventStatus.DRAFT
-                    );
+                    mock(EventEntity.class);
 
             when(eventMapper.toNewEntity(any(Event.class)))
                     .thenReturn(newEntity);
@@ -293,44 +180,19 @@ class EventServiceTest {
                     .thenReturn(newEntity);
 
             when(eventMapper.toResponse(newEntity))
-                    .thenReturn(response);
+                    .thenReturn(eventResponse);
 
             eventService.create(request);
 
             ArgumentCaptor<EventEntity> captor =
-                    ArgumentCaptor.forClass(
-                            EventEntity.class
-                    );
+                    ArgumentCaptor.forClass(EventEntity.class);
 
             verify(eventRepository)
                     .saveAndFlush(captor.capture());
 
-            EventEntity captured =
-                    captor.getValue();
-
             assertEquals(
-                    eventId,
-                    captured.id()
-            );
-
-            assertEquals(
-                    0L,
-                    captured.version()
-            );
-
-            assertEquals(
-                    "New Event",
-                    captured.getName()
-            );
-
-            assertEquals(
-                    "Description",
-                    captured.getDescription()
-            );
-
-            assertEquals(
-                    EventStatus.DRAFT,
-                    captured.getStatus()
+                    newEntity,
+                    captor.getValue()
             );
         }
     }
@@ -340,59 +202,57 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Get Event By ID")
+    @DisplayName("getById")
     class GetByIdTests {
 
         @Test
-        @DisplayName("Should return event when found")
-        void getById_shouldReturnEvent() {
+        @DisplayName("should return event when found")
+        void shouldReturnEventWhenFound() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
+            givenEventExists();
 
-            when(eventMapper.toResponse(entity))
-                    .thenReturn(response);
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
 
             EventResponse result =
-                    eventService.getById(eventId);
+                    eventService.getById(eventEntity.id());
 
             assertEquals(
-                    response,
+                    eventResponse,
                     result
             );
 
             assertEquals(
-                    eventId,
+                    eventEntity.id(),
                     result.id()
             );
 
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
 
             verify(eventMapper)
-                    .toResponse(entity);
+                    .toResponse(eventEntity);
         }
 
         @Test
-        @DisplayName("Should throw when event does not exist")
-        void getById_shouldThrowWhenMissing() {
+        @DisplayName("should throw when event does not exist")
+        void shouldThrowWhenEventDoesNotExist() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(Optional.empty());
+            givenEventDoesNotExist();
 
             assertThrows(
                     EventNotFoundException.class,
-                    () -> eventService.getById(eventId)
+                    () -> eventService.getById(
+                            eventEntity.id()
+                    )
             );
 
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
 
-            verifyNoInteractions(
-                    eventMapper
-            );
+            verifyNoInteractions(eventMapper);
         }
     }
 
@@ -401,113 +261,964 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Get All Events")
+    @DisplayName("getAll")
     class GetAllTests {
 
         @Test
-        @DisplayName("Should return all events")
-        void getAll_shouldReturnAllEvents() {
-
-            UUID secondEventId =
-                    UUID.randomUUID();
+        @DisplayName(
+                "should return first page without status filter"
+        )
+        void shouldReturnFirstPageWithoutStatusFilter() {
 
             EventEntity secondEntity =
-                    persistedEntity(
-                            secondEventId,
-                            0L,
-                            "Jazz Festival",
-                            "Live jazz",
-                            scheduledAt,
-                            EventStatus.DRAFT
+                    event(
+                            SECOND_EVENT_NAME,
+                            SECOND_EVENT_DESCRIPTION,
+                            SECOND_SCHEDULED_AT,
+                            EventStatus.PUBLISHED
                     );
 
             EventResponse secondResponse =
-                    new EventResponse(
-                            secondEventId,
-                            0L,
-                            "Jazz Festival",
-                            "Live jazz",
-                            scheduledAt,
-                            EventStatus.DRAFT
+                    response(secondEntity);
+
+            givenFirstPageWithoutStatus(
+                    eventEntity,
+                    secondEntity
+            );
+
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
+
+            givenResponse(
+                    secondEntity,
+                    secondResponse
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            null,
+                            DEFAULT_LIMIT,
+                            null
                     );
 
-            when(eventRepository.findAll())
-                    .thenReturn(
-                            List.of(
-                                    entity,
-                                    secondEntity
-                            )
-                    );
-
-            when(eventMapper.toResponse(entity))
-                    .thenReturn(response);
-
-            when(eventMapper.toResponse(secondEntity))
-                    .thenReturn(secondResponse);
-
-            List<EventResponse> result =
-                    eventService.getAll();
+            assertNotNull(result);
 
             assertEquals(
                     2,
-                    result.size()
+                    result.items().size()
             );
 
             assertEquals(
-                    response,
-                    result.get(0)
+                    eventResponse,
+                    result.items().get(0)
             );
 
             assertEquals(
                     secondResponse,
-                    result.get(1)
+                    result.items().get(1)
             );
 
-            assertEquals(
-                    eventId,
-                    result.get(0).id()
-            );
-
-            assertEquals(
-                    secondEventId,
-                    result.get(1).id()
+            assertNull(
+                    result.nextCursor()
             );
 
             verify(eventRepository)
-                    .findAll();
+                    .findFirstKeysetPage(
+                            any(Pageable.class)
+                    );
 
             verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPageByStatus(
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPage(
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPageByStatus(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(eventMapper)
+                    .toResponse(eventEntity);
+
+            verify(eventMapper)
+                    .toResponse(secondEntity);
+
+            verifyNoInteractions(cursorCodec);
+        }
+
+        @Test
+        @DisplayName(
+                "should return first page filtered by status"
+        )
+        void shouldReturnFirstPageFilteredByStatus() {
+
+            givenFirstPageByStatus(
+                    EventStatus.DRAFT,
+                    eventEntity
+            );
+
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            EventStatus.DRAFT,
+                            DEFAULT_LIMIT,
+                            null
+                    );
+
+            assertNotNull(result);
+
+            assertEquals(
+                    1,
+                    result.items().size()
+            );
+
+            assertEquals(
+                    eventResponse,
+                    result.items().get(0)
+            );
+
+            assertEquals(
+                    EventStatus.DRAFT,
+                    result.items().get(0).status()
+            );
+
+            assertNull(
+                    result.nextCursor()
+            );
+
+            verify(eventRepository)
+                    .findFirstKeysetPageByStatus(
+                            eq(EventStatus.DRAFT),
+                            any(Pageable.class)
+                    );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPage(
+                    any(Pageable.class)
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPage(
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPageByStatus(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(eventMapper)
+                    .toResponse(eventEntity);
+
+            verifyNoInteractions(cursorCodec);
+        }
+
+        @Test
+        @DisplayName(
+                "should return empty page when no events exist"
+        )
+        void shouldReturnEmptyPageWhenNoEventsExist() {
+
+            givenFirstPageByStatus(
+                    EventStatus.PUBLISHED
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            EventStatus.PUBLISHED,
+                            DEFAULT_LIMIT,
+                            null
+                    );
+
+            assertNotNull(result);
+
+            assertNotNull(result.items());
+
+            assertTrue(
+                    result.items().isEmpty()
+            );
+
+            assertNull(
+                    result.nextCursor()
+            );
+
+            verify(eventRepository)
+                    .findFirstKeysetPageByStatus(
+                            eq(EventStatus.PUBLISHED),
+                            any(Pageable.class)
+                    );
+
+            verifyNoInteractions(
                     eventMapper,
-                    times(2)
-            ).toResponse(
-                    any(EventEntity.class)
+                    cursorCodec
             );
         }
 
         @Test
-        @DisplayName("Should return empty list when no events exist")
-        void getAll_shouldReturnEmptyList() {
+        @DisplayName(
+                "should fetch limit plus one record without status"
+        )
+        void shouldFetchLimitPlusOneRecordWithoutStatus() {
 
-            when(eventRepository.findAll())
-                    .thenReturn(
-                            List.of()
+            int limit = 2;
+
+            EventEntity secondEntity =
+                    event(
+                            SECOND_EVENT_NAME,
+                            SECOND_EVENT_DESCRIPTION,
+                            SECOND_SCHEDULED_AT,
+                            EventStatus.PUBLISHED
                     );
 
-            List<EventResponse> result =
-                    eventService.getAll();
+            EventEntity thirdEntity =
+                    event(
+                            THIRD_EVENT_NAME,
+                            THIRD_EVENT_DESCRIPTION,
+                            THIRD_SCHEDULED_AT,
+                            EventStatus.DRAFT
+                    );
 
-            assertNotNull(result);
+            EventResponse secondResponse =
+                    response(secondEntity);
+
+            givenFirstPageWithoutStatus(
+                    eventEntity,
+                    secondEntity,
+                    thirdEntity
+            );
+
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
+
+            givenResponse(
+                    secondEntity,
+                    secondResponse
+            );
+
+            when(cursorCodec.encode(any(EventCursor.class)))
+                    .thenReturn(ENCODED_CURSOR);
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            null,
+                            limit,
+                            null
+                    );
+
+            assertEquals(
+                    2,
+                    result.items().size()
+            );
+
+            assertEquals(
+                    eventResponse,
+                    result.items().get(0)
+            );
+
+            assertEquals(
+                    secondResponse,
+                    result.items().get(1)
+            );
+
+            assertEquals(
+                    ENCODED_CURSOR,
+                    result.nextCursor()
+            );
+
+            ArgumentCaptor<Pageable> pageableCaptor =
+                    ArgumentCaptor.forClass(Pageable.class);
+
+            verify(eventRepository)
+                    .findFirstKeysetPage(
+                            pageableCaptor.capture()
+                    );
+
+            assertEquals(
+                    limit + 1,
+                    pageableCaptor
+                            .getValue()
+                            .getPageSize()
+            );
+
+            ArgumentCaptor<EventCursor> cursorCaptor =
+                    ArgumentCaptor.forClass(EventCursor.class);
+
+            verify(cursorCodec)
+                    .encode(cursorCaptor.capture());
+
+            EventCursor encodedCursor =
+                    cursorCaptor.getValue();
+
+            assertEquals(
+                    secondEntity.getScheduledAt(),
+                    encodedCursor.scheduledAt()
+            );
+
+            assertEquals(
+                    secondEntity.id(),
+                    encodedCursor.eventId()
+            );
 
             assertTrue(
-                    result.isEmpty()
+                    result.items()
+                            .stream()
+                            .noneMatch(
+                                    item -> item.id()
+                                            .equals(thirdEntity.id())
+                            )
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPageByStatus(
+                    any(),
+                    any()
+            );
+        }
+
+        @Test
+        @DisplayName(
+                "should fetch limit plus one record with status"
+        )
+        void shouldFetchLimitPlusOneRecordWithStatus() {
+
+            int limit = 2;
+
+            EventEntity secondEntity =
+                    event(
+                            SECOND_EVENT_NAME,
+                            SECOND_EVENT_DESCRIPTION,
+                            SECOND_SCHEDULED_AT,
+                            EventStatus.DRAFT
+                    );
+
+            EventEntity thirdEntity =
+                    event(
+                            THIRD_EVENT_NAME,
+                            THIRD_EVENT_DESCRIPTION,
+                            THIRD_SCHEDULED_AT,
+                            EventStatus.DRAFT
+                    );
+
+            EventResponse secondResponse =
+                    response(secondEntity);
+
+            givenFirstPageByStatus(
+                    EventStatus.DRAFT,
+                    eventEntity,
+                    secondEntity,
+                    thirdEntity
+            );
+
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
+
+            givenResponse(
+                    secondEntity,
+                    secondResponse
+            );
+
+            when(cursorCodec.encode(any(EventCursor.class)))
+                    .thenReturn(ENCODED_CURSOR);
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            EventStatus.DRAFT,
+                            limit,
+                            null
+                    );
+
+            assertEquals(
+                    2,
+                    result.items().size()
+            );
+
+            assertEquals(
+                    ENCODED_CURSOR,
+                    result.nextCursor()
+            );
+
+            ArgumentCaptor<Pageable> pageableCaptor =
+                    ArgumentCaptor.forClass(Pageable.class);
+
+            verify(eventRepository)
+                    .findFirstKeysetPageByStatus(
+                            eq(EventStatus.DRAFT),
+                            pageableCaptor.capture()
+                    );
+
+            assertEquals(
+                    limit + 1,
+                    pageableCaptor
+                            .getValue()
+                            .getPageSize()
+            );
+
+            ArgumentCaptor<EventCursor> cursorCaptor =
+                    ArgumentCaptor.forClass(EventCursor.class);
+
+            verify(cursorCodec)
+                    .encode(cursorCaptor.capture());
+
+            EventCursor encodedCursor =
+                    cursorCaptor.getValue();
+
+            assertEquals(
+                    secondEntity.getScheduledAt(),
+                    encodedCursor.scheduledAt()
+            );
+
+            assertEquals(
+                    secondEntity.id(),
+                    encodedCursor.eventId()
+            );
+        }
+
+        @Test
+        @DisplayName(
+                "should use cursor without status filter"
+        )
+        void shouldUseCursorWithoutStatusFilter() {
+
+            int limit = 2;
+
+            EventCursor decodedCursor =
+                    new EventCursor(
+                            SCHEDULED_AT,
+                            eventEntity.id()
+                    );
+
+            EventEntity secondEntity =
+                    event(
+                            SECOND_EVENT_NAME,
+                            SECOND_EVENT_DESCRIPTION,
+                            SECOND_SCHEDULED_AT,
+                            EventStatus.PUBLISHED
+                    );
+
+            EventResponse secondResponse =
+                    response(secondEntity);
+
+            when(cursorCodec.decode(ENCODED_CURSOR))
+                    .thenReturn(decodedCursor);
+
+            when(
+                    eventRepository.findNextKeysetPage(
+                            eq(SCHEDULED_AT),
+                            eq(eventEntity.id()),
+                            any(Pageable.class)
+                    )
+            ).thenReturn(
+                    List.of(secondEntity)
+            );
+
+            givenResponse(
+                    secondEntity,
+                    secondResponse
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            null,
+                            limit,
+                            ENCODED_CURSOR
+                    );
+
+            assertEquals(
+                    1,
+                    result.items().size()
+            );
+
+            assertEquals(
+                    secondResponse,
+                    result.items().get(0)
+            );
+
+            assertNull(
+                    result.nextCursor()
+            );
+
+            verify(cursorCodec)
+                    .decode(ENCODED_CURSOR);
+
+            verify(eventRepository)
+                    .findNextKeysetPage(
+                            eq(SCHEDULED_AT),
+                            eq(eventEntity.id()),
+                            any(Pageable.class)
+                    );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPage(
+                    any(Pageable.class)
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPageByStatus(
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPageByStatus(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(eventMapper)
+                    .toResponse(secondEntity);
+
+            verify(
+                    cursorCodec,
+                    never()
+            ).encode(any());
+        }
+
+        @Test
+        @DisplayName(
+                "should use cursor and status filter"
+        )
+        void shouldUseCursorWithStatusFilter() {
+
+            int limit = 2;
+
+            EventCursor decodedCursor =
+                    new EventCursor(
+                            SCHEDULED_AT,
+                            eventEntity.id()
+                    );
+
+            EventEntity secondEntity =
+                    event(
+                            SECOND_EVENT_NAME,
+                            SECOND_EVENT_DESCRIPTION,
+                            SECOND_SCHEDULED_AT,
+                            EventStatus.DRAFT
+                    );
+
+            EventResponse secondResponse =
+                    response(secondEntity);
+
+            when(cursorCodec.decode(ENCODED_CURSOR))
+                    .thenReturn(decodedCursor);
+
+            when(
+                    eventRepository.findNextKeysetPageByStatus(
+                            eq(EventStatus.DRAFT),
+                            eq(SCHEDULED_AT),
+                            eq(eventEntity.id()),
+                            any(Pageable.class)
+                    )
+            ).thenReturn(
+                    List.of(secondEntity)
+            );
+
+            givenResponse(
+                    secondEntity,
+                    secondResponse
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            EventStatus.DRAFT,
+                            limit,
+                            ENCODED_CURSOR
+                    );
+
+            assertEquals(
+                    1,
+                    result.items().size()
+            );
+
+            assertEquals(
+                    secondResponse,
+                    result.items().get(0)
+            );
+
+            assertNull(
+                    result.nextCursor()
+            );
+
+            verify(cursorCodec)
+                    .decode(ENCODED_CURSOR);
+
+            verify(eventRepository)
+                    .findNextKeysetPageByStatus(
+                            eq(EventStatus.DRAFT),
+                            eq(SCHEDULED_AT),
+                            eq(eventEntity.id()),
+                            any(Pageable.class)
+                    );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPage(
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPage(
+                    any(Pageable.class)
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPageByStatus(
+                    any(),
+                    any()
+            );
+
+            verify(eventMapper)
+                    .toResponse(secondEntity);
+
+            verify(
+                    cursorCodec,
+                    never()
+            ).encode(any());
+        }
+
+        @Test
+        @DisplayName(
+                "should treat blank cursor as first page without status"
+        )
+        void shouldTreatBlankCursorAsFirstPageWithoutStatus() {
+
+            givenFirstPageWithoutStatus(
+                    eventEntity
+            );
+
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            null,
+                            DEFAULT_LIMIT,
+                            "   "
+                    );
+
+            assertEquals(
+                    1,
+                    result.items().size()
+            );
+
+            assertEquals(
+                    eventResponse,
+                    result.items().get(0)
+            );
+
+            assertNull(
+                    result.nextCursor()
             );
 
             verify(eventRepository)
-                    .findAll();
+                    .findFirstKeysetPage(
+                            any(Pageable.class)
+                    );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPageByStatus(
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPage(
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPageByStatus(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verifyNoInteractions(cursorCodec);
+        }
+
+        @Test
+        @DisplayName(
+                "should treat blank cursor as first page with status"
+        )
+        void shouldTreatBlankCursorAsFirstPageWithStatus() {
+
+            givenFirstPageByStatus(
+                    EventStatus.DRAFT,
+                    eventEntity
+            );
+
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            EventStatus.DRAFT,
+                            DEFAULT_LIMIT,
+                            "   "
+                    );
+
+            assertEquals(
+                    1,
+                    result.items().size()
+            );
+
+            assertEquals(
+                    eventResponse,
+                    result.items().get(0)
+            );
+
+            assertNull(
+                    result.nextCursor()
+            );
+
+            verify(eventRepository)
+                    .findFirstKeysetPageByStatus(
+                            eq(EventStatus.DRAFT),
+                            any(Pageable.class)
+                    );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPage(
+                    any(Pageable.class)
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPage(
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPageByStatus(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verifyNoInteractions(cursorCodec);
+        }
+
+        @Test
+        @DisplayName("should reject page size below minimum")
+        void shouldRejectPageSizeBelowMinimum() {
+
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> eventService.getAll(
+                            EventStatus.DRAFT,
+                            0,
+                            null
+                    )
+            );
 
             verifyNoInteractions(
-                    eventMapper
+                    eventRepository,
+                    eventMapper,
+                    cursorCodec
             );
+        }
+
+        @Test
+        @DisplayName("should reject page size above maximum")
+        void shouldRejectPageSizeAboveMaximum() {
+
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> eventService.getAll(
+                            EventStatus.DRAFT,
+                            MAX_PAGE_SIZE + 1,
+                            null
+                    )
+            );
+
+            verifyNoInteractions(
+                    eventRepository,
+                    eventMapper,
+                    cursorCodec
+            );
+        }
+
+        @Test
+        @DisplayName("should accept minimum page size")
+        void shouldAcceptMinimumPageSize() {
+
+            givenFirstPageByStatus(
+                    EventStatus.DRAFT
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            EventStatus.DRAFT,
+                            1,
+                            null
+                    );
+
+            assertNotNull(result);
+
+            verify(eventRepository)
+                    .findFirstKeysetPageByStatus(
+                            eq(EventStatus.DRAFT),
+                            any(Pageable.class)
+                    );
+        }
+
+        @Test
+        @DisplayName("should accept maximum page size")
+        void shouldAcceptMaximumPageSize() {
+
+            givenFirstPageByStatus(
+                    EventStatus.DRAFT
+            );
+
+            EventPageResponse result =
+                    eventService.getAll(
+                            EventStatus.DRAFT,
+                            MAX_PAGE_SIZE,
+                            null
+                    );
+
+            assertNotNull(result);
+
+            verify(eventRepository)
+                    .findFirstKeysetPageByStatus(
+                            eq(EventStatus.DRAFT),
+                            any(Pageable.class)
+                    );
+        }
+
+        @Test
+        @DisplayName("should propagate cursor decoding failure")
+        void shouldPropagateCursorDecodingFailure() {
+
+            when(cursorCodec.decode(ENCODED_CURSOR))
+                    .thenThrow(
+                            new IllegalArgumentException(
+                                    "Invalid cursor"
+                            )
+                    );
+
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> eventService.getAll(
+                            EventStatus.DRAFT,
+                            DEFAULT_LIMIT,
+                            ENCODED_CURSOR
+                    )
+            );
+
+            verify(cursorCodec)
+                    .decode(ENCODED_CURSOR);
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPage(
+                    any(Pageable.class)
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findFirstKeysetPageByStatus(
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPage(
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verify(
+                    eventRepository,
+                    never()
+            ).findNextKeysetPageByStatus(
+                    any(),
+                    any(),
+                    any(),
+                    any()
+            );
+
+            verifyNoInteractions(eventMapper);
         }
     }
 
@@ -516,59 +1227,55 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Update Event")
+    @DisplayName("update")
     class UpdateTests {
 
         @Test
-        @DisplayName("Should update existing event")
-        void update_shouldUpdateExistingEvent() {
+        @DisplayName("should update existing event")
+        void shouldUpdateExistingEvent() {
+
+            Instant updatedScheduledAt =
+                    Instant.parse(
+                            "2026-12-21T19:00:00Z"
+                    );
 
             UpdateEventRequest request =
                     new UpdateEventRequest(
                             "Rock Concert Updated",
                             "Updated description",
-                            Instant.parse(
-                                    "2026-12-21T19:00:00Z"
-                            )
+                            updatedScheduledAt
                     );
 
             EventEntity savedEntity =
-                    persistedEntity(
-                            eventId,
-                            1L,
-                            "Rock Concert Updated",
-                            "Updated description",
-                            request.scheduledAt(),
-                            EventStatus.DRAFT
-                    );
+                    mock(EventEntity.class);
 
             EventResponse updatedResponse =
-                    new EventResponse(
-                            eventId,
+                    response(
+                            eventEntity.id(),
                             1L,
                             "Rock Concert Updated",
                             "Updated description",
-                            request.scheduledAt(),
+                            updatedScheduledAt,
                             EventStatus.DRAFT
                     );
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
+            givenEventExists();
 
-            when(eventMapper.toDomain(entity))
+            when(eventMapper.toDomain(eventEntity))
                     .thenReturn(domainEvent);
 
-            when(eventRepository.saveAndFlush(entity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
             when(eventMapper.toResponse(savedEntity))
                     .thenReturn(updatedResponse);
 
             EventResponse result =
                     eventService.update(
-                            eventId,
+                            eventEntity.id(),
                             request
                     );
 
@@ -577,67 +1284,57 @@ class EventServiceTest {
                     result
             );
 
-            assertEquals(
-                    eventId,
-                    result.id()
-            );
-
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
 
             verify(eventMapper)
-                    .toDomain(entity);
+                    .toDomain(eventEntity);
 
             verify(domainEvent)
                     .updateDetails(
                             any(),
                             any(),
-                            eq(request.scheduledAt())
+                            eq(updatedScheduledAt)
                     );
 
             verify(eventMapper)
                     .updateEntity(
                             domainEvent,
-                            entity
+                            eventEntity
                     );
 
             verify(eventRepository)
-                    .saveAndFlush(entity);
+                    .saveAndFlush(eventEntity);
 
             verify(eventMapper)
                     .toResponse(savedEntity);
         }
 
         @Test
-        @DisplayName("Should throw when event does not exist")
-        void update_shouldThrowWhenMissing() {
+        @DisplayName("should throw when event does not exist")
+        void shouldThrowWhenEventDoesNotExist() {
 
             UpdateEventRequest request =
-                    new UpdateEventRequest(
+                    createUpdateRequest(
                             "Updated",
                             "Updated description",
-                            scheduledAt
+                            SCHEDULED_AT
                     );
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.empty()
-                    );
+            givenEventDoesNotExist();
 
             assertThrows(
                     EventNotFoundException.class,
                     () -> eventService.update(
-                            eventId,
+                            eventEntity.id(),
                             request
                     )
             );
 
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
 
-            verifyNoInteractions(
-                    eventMapper
-            );
+            verifyNoInteractions(eventMapper);
 
             verify(
                     eventRepository,
@@ -651,54 +1348,53 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Publish Event")
+    @DisplayName("publish")
     class PublishTests {
 
         @Test
-        @DisplayName("Should publish event")
-        void publish_shouldPublishEvent() {
+        @DisplayName("should publish event")
+        void shouldPublishEvent() {
 
             EventEntity savedEntity =
-                    persistedEntity(
-                            eventId,
-                            1L,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
-                            EventStatus.PUBLISHED
-                    );
+                    mock(EventEntity.class);
 
             EventResponse publishedResponse =
-                    new EventResponse(
-                            eventId,
+                    response(
+                            eventEntity.id(),
                             1L,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
+                            EVENT_NAME,
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT,
                             EventStatus.PUBLISHED
                     );
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
+            givenEventExists();
+            givenDomainEvent();
 
-            when(eventMapper.toDomain(entity))
-                    .thenReturn(domainEvent);
-
-            when(eventRepository.saveAndFlush(entity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
             when(eventMapper.toResponse(savedEntity))
                     .thenReturn(publishedResponse);
 
             EventResponse result =
-                    eventService.publish(eventId);
+                    eventService.publish(
+                            eventEntity.id()
+                    );
 
             assertEquals(
                     publishedResponse,
                     result
             );
+
+            verify(eventRepository)
+                    .findById(eventEntity.id());
+
+            verify(eventMapper)
+                    .toDomain(eventEntity);
 
             verify(domainEvent)
                     .publish();
@@ -706,36 +1402,33 @@ class EventServiceTest {
             verify(eventMapper)
                     .updateEntity(
                             domainEvent,
-                            entity
+                            eventEntity
                     );
 
             verify(eventRepository)
-                    .saveAndFlush(entity);
+                    .saveAndFlush(eventEntity);
 
             verify(eventMapper)
                     .toResponse(savedEntity);
         }
 
         @Test
-        @DisplayName("Should throw when event does not exist")
-        void publish_shouldThrowWhenMissing() {
+        @DisplayName("should throw when event does not exist")
+        void shouldThrowWhenEventDoesNotExist() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.empty()
-                    );
+            givenEventDoesNotExist();
 
             assertThrows(
                     EventNotFoundException.class,
-                    () -> eventService.publish(eventId)
+                    () -> eventService.publish(
+                            eventEntity.id()
+                    )
             );
 
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
 
-            verifyNoInteractions(
-                    eventMapper
-            );
+            verifyNoInteractions(eventMapper);
 
             verify(
                     eventRepository,
@@ -744,27 +1437,23 @@ class EventServiceTest {
         }
 
         @Test
-        @DisplayName("Should propagate domain exception")
-        void publish_shouldPropagateDomainException() {
+        @DisplayName("should propagate domain exception")
+        void shouldPropagateDomainException() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
-
-            when(eventMapper.toDomain(entity))
-                    .thenReturn(domainEvent);
+            givenEventExists();
+            givenDomainEvent();
 
             doThrow(
-                    new IllegalStateException(
-                            "Event must be in DRAFT state"
+                    new RuntimeException(
+                            "Invalid event state"
                     )
-            ).when(domainEvent)
-                    .publish();
+            ).when(domainEvent).publish();
 
             assertThrows(
-                    IllegalStateException.class,
-                    () -> eventService.publish(eventId)
+                    RuntimeException.class,
+                    () -> eventService.publish(
+                            eventEntity.id()
+                    )
             );
 
             verify(domainEvent)
@@ -773,10 +1462,7 @@ class EventServiceTest {
             verify(
                     eventMapper,
                     never()
-            ).updateEntity(
-                    any(),
-                    any()
-            );
+            ).updateEntity(any(), any());
 
             verify(
                     eventRepository,
@@ -790,54 +1476,53 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Cancel Event")
+    @DisplayName("cancel")
     class CancelTests {
 
         @Test
-        @DisplayName("Should cancel event")
-        void cancel_shouldCancelEvent() {
+        @DisplayName("should cancel event")
+        void shouldCancelEvent() {
 
             EventEntity savedEntity =
-                    persistedEntity(
-                            eventId,
-                            1L,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
-                            EventStatus.CANCELLED
-                    );
+                    mock(EventEntity.class);
 
             EventResponse cancelledResponse =
-                    new EventResponse(
-                            eventId,
+                    response(
+                            eventEntity.id(),
                             1L,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
+                            EVENT_NAME,
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT,
                             EventStatus.CANCELLED
                     );
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
+            givenEventExists();
+            givenDomainEvent();
 
-            when(eventMapper.toDomain(entity))
-                    .thenReturn(domainEvent);
-
-            when(eventRepository.saveAndFlush(entity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
             when(eventMapper.toResponse(savedEntity))
                     .thenReturn(cancelledResponse);
 
             EventResponse result =
-                    eventService.cancel(eventId);
+                    eventService.cancel(
+                            eventEntity.id()
+                    );
 
             assertEquals(
                     cancelledResponse,
                     result
             );
+
+            verify(eventRepository)
+                    .findById(eventEntity.id());
+
+            verify(eventMapper)
+                    .toDomain(eventEntity);
 
             verify(domainEvent)
                     .cancel();
@@ -845,36 +1530,33 @@ class EventServiceTest {
             verify(eventMapper)
                     .updateEntity(
                             domainEvent,
-                            entity
+                            eventEntity
                     );
 
             verify(eventRepository)
-                    .saveAndFlush(entity);
+                    .saveAndFlush(eventEntity);
 
             verify(eventMapper)
                     .toResponse(savedEntity);
         }
 
         @Test
-        @DisplayName("Should throw when event does not exist")
-        void cancel_shouldThrowWhenMissing() {
+        @DisplayName("should throw when event does not exist")
+        void shouldThrowWhenEventDoesNotExist() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.empty()
-                    );
+            givenEventDoesNotExist();
 
             assertThrows(
                     EventNotFoundException.class,
-                    () -> eventService.cancel(eventId)
+                    () -> eventService.cancel(
+                            eventEntity.id()
+                    )
             );
 
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
 
-            verifyNoInteractions(
-                    eventMapper
-            );
+            verifyNoInteractions(eventMapper);
 
             verify(
                     eventRepository,
@@ -883,27 +1565,23 @@ class EventServiceTest {
         }
 
         @Test
-        @DisplayName("Should propagate domain exception")
-        void cancel_shouldPropagateDomainException() {
+        @DisplayName("should propagate domain exception")
+        void shouldPropagateDomainException() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
-
-            when(eventMapper.toDomain(entity))
-                    .thenReturn(domainEvent);
+            givenEventExists();
+            givenDomainEvent();
 
             doThrow(
-                    new IllegalStateException(
-                            "Event cannot be cancelled"
+                    new RuntimeException(
+                            "Invalid event state"
                     )
-            ).when(domainEvent)
-                    .cancel();
+            ).when(domainEvent).cancel();
 
             assertThrows(
-                    IllegalStateException.class,
-                    () -> eventService.cancel(eventId)
+                    RuntimeException.class,
+                    () -> eventService.cancel(
+                            eventEntity.id()
+                    )
             );
 
             verify(domainEvent)
@@ -912,10 +1590,7 @@ class EventServiceTest {
             verify(
                     eventMapper,
                     never()
-            ).updateEntity(
-                    any(),
-                    any()
-            );
+            ).updateEntity(any(), any());
 
             verify(
                     eventRepository,
@@ -929,54 +1604,53 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Complete Event")
+    @DisplayName("complete")
     class CompleteTests {
 
         @Test
-        @DisplayName("Should complete event")
-        void complete_shouldCompleteEvent() {
+        @DisplayName("should complete event")
+        void shouldCompleteEvent() {
 
             EventEntity savedEntity =
-                    persistedEntity(
-                            eventId,
-                            2L,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
-                            EventStatus.COMPLETED
-                    );
+                    mock(EventEntity.class);
 
             EventResponse completedResponse =
-                    new EventResponse(
-                            eventId,
+                    response(
+                            eventEntity.id(),
                             2L,
-                            "Rock Concert",
-                            "Live concert",
-                            scheduledAt,
+                            EVENT_NAME,
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT,
                             EventStatus.COMPLETED
                     );
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
+            givenEventExists();
+            givenDomainEvent();
 
-            when(eventMapper.toDomain(entity))
-                    .thenReturn(domainEvent);
-
-            when(eventRepository.saveAndFlush(entity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
             when(eventMapper.toResponse(savedEntity))
                     .thenReturn(completedResponse);
 
             EventResponse result =
-                    eventService.complete(eventId);
+                    eventService.complete(
+                            eventEntity.id()
+                    );
 
             assertEquals(
                     completedResponse,
                     result
             );
+
+            verify(eventRepository)
+                    .findById(eventEntity.id());
+
+            verify(eventMapper)
+                    .toDomain(eventEntity);
 
             verify(domainEvent)
                     .complete();
@@ -984,36 +1658,33 @@ class EventServiceTest {
             verify(eventMapper)
                     .updateEntity(
                             domainEvent,
-                            entity
+                            eventEntity
                     );
 
             verify(eventRepository)
-                    .saveAndFlush(entity);
+                    .saveAndFlush(eventEntity);
 
             verify(eventMapper)
                     .toResponse(savedEntity);
         }
 
         @Test
-        @DisplayName("Should throw when event does not exist")
-        void complete_shouldThrowWhenMissing() {
+        @DisplayName("should throw when event does not exist")
+        void shouldThrowWhenEventDoesNotExist() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.empty()
-                    );
+            givenEventDoesNotExist();
 
             assertThrows(
                     EventNotFoundException.class,
-                    () -> eventService.complete(eventId)
+                    () -> eventService.complete(
+                            eventEntity.id()
+                    )
             );
 
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
 
-            verifyNoInteractions(
-                    eventMapper
-            );
+            verifyNoInteractions(eventMapper);
 
             verify(
                     eventRepository,
@@ -1022,27 +1693,23 @@ class EventServiceTest {
         }
 
         @Test
-        @DisplayName("Should propagate domain exception")
-        void complete_shouldPropagateDomainException() {
+        @DisplayName("should propagate domain exception")
+        void shouldPropagateDomainException() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
-
-            when(eventMapper.toDomain(entity))
-                    .thenReturn(domainEvent);
+            givenEventExists();
+            givenDomainEvent();
 
             doThrow(
-                    new IllegalStateException(
-                            "Event cannot be completed"
+                    new RuntimeException(
+                            "Invalid event state"
                     )
-            ).when(domainEvent)
-                    .complete();
+            ).when(domainEvent).complete();
 
             assertThrows(
-                    IllegalStateException.class,
-                    () -> eventService.complete(eventId)
+                    RuntimeException.class,
+                    () -> eventService.complete(
+                            eventEntity.id()
+                    )
             );
 
             verify(domainEvent)
@@ -1051,10 +1718,7 @@ class EventServiceTest {
             verify(
                     eventMapper,
                     never()
-            ).updateEntity(
-                    any(),
-                    any()
-            );
+            ).updateEntity(any(), any());
 
             verify(
                     eventRepository,
@@ -1068,48 +1732,186 @@ class EventServiceTest {
     // =====================================================================
 
     @Nested
-    @DisplayName("Delete Event")
+    @DisplayName("delete")
     class DeleteTests {
 
         @Test
-        @DisplayName("Should delete existing event")
-        void delete_shouldDeleteExistingEvent() {
+        @DisplayName("should delete existing event")
+        void shouldDeleteExistingEvent() {
 
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.of(entity)
-                    );
+            givenEventExists();
 
-            eventService.delete(eventId);
-
-            verify(eventRepository)
-                    .findById(eventId);
-
-            verify(eventRepository)
-                    .delete(entity);
-        }
-
-        @Test
-        @DisplayName("Should throw when event does not exist")
-        void delete_shouldThrowWhenMissing() {
-
-            when(eventRepository.findById(eventId))
-                    .thenReturn(
-                            Optional.empty()
-                    );
-
-            assertThrows(
-                    EventNotFoundException.class,
-                    () -> eventService.delete(eventId)
+            eventService.delete(
+                    eventEntity.id()
             );
 
             verify(eventRepository)
-                    .findById(eventId);
+                    .findById(eventEntity.id());
+
+            verify(eventRepository)
+                    .delete(eventEntity);
+
+            verifyNoInteractions(eventMapper);
+        }
+
+        @Test
+        @DisplayName("should throw when event does not exist")
+        void shouldThrowWhenEventDoesNotExist() {
+
+            givenEventDoesNotExist();
+
+            assertThrows(
+                    EventNotFoundException.class,
+                    () -> eventService.delete(
+                            eventEntity.id()
+                    )
+            );
+
+            verify(eventRepository)
+                    .findById(eventEntity.id());
 
             verify(
                     eventRepository,
                     never()
             ).delete(any());
+
+            verifyNoInteractions(eventMapper);
         }
+    }
+
+    // =====================================================================
+    // FIXTURE HELPERS
+    // =====================================================================
+
+    private EventEntity event(
+            String name,
+            String description,
+            Instant scheduledAt,
+            EventStatus status
+    ) {
+        return new EventEntity(
+                name,
+                description,
+                scheduledAt,
+                status
+        );
+    }
+
+    private EventResponse response(
+            EventEntity entity
+    ) {
+        return response(
+                entity.id(),
+                entity.version(),
+                entity.getName(),
+                entity.getDescription(),
+                entity.getScheduledAt(),
+                entity.getStatus()
+        );
+    }
+
+    private EventResponse response(
+            UUID id,
+            Long version,
+            String name,
+            String description,
+            Instant scheduledAt,
+            EventStatus status
+    ) {
+        return new EventResponse(
+                id,
+                version,
+                name,
+                description,
+                scheduledAt,
+                status
+        );
+    }
+
+    private CreateEventRequest createRequest(
+            String name,
+            String description,
+            Instant scheduledAt
+    ) {
+        return new CreateEventRequest(
+                name,
+                description,
+                scheduledAt
+        );
+    }
+
+    private UpdateEventRequest createUpdateRequest(
+            String name,
+            String description,
+            Instant scheduledAt
+    ) {
+        return new UpdateEventRequest(
+                name,
+                description,
+                scheduledAt
+        );
+    }
+
+    // =====================================================================
+    // MOCK HELPERS
+    // =====================================================================
+
+    private void givenEventExists() {
+
+        when(eventRepository.findById(eventEntity.id()))
+                .thenReturn(
+                        Optional.of(eventEntity)
+                );
+    }
+
+    private void givenEventDoesNotExist() {
+
+        when(eventRepository.findById(eventEntity.id()))
+                .thenReturn(
+                        Optional.empty()
+                );
+    }
+
+    private void givenDomainEvent() {
+
+        when(eventMapper.toDomain(eventEntity))
+                .thenReturn(domainEvent);
+    }
+
+    private void givenResponse(
+            EventEntity entity,
+            EventResponse response
+    ) {
+
+        when(eventMapper.toResponse(entity))
+                .thenReturn(response);
+    }
+
+    private void givenFirstPageWithoutStatus(
+            EventEntity... entities
+    ) {
+
+        when(
+                eventRepository.findFirstKeysetPage(
+                        any(Pageable.class)
+                )
+        ).thenReturn(
+                List.of(entities)
+        );
+    }
+
+    private void givenFirstPageByStatus(
+            EventStatus status,
+            EventEntity... entities
+    ) {
+
+        when(
+                eventRepository.findFirstKeysetPageByStatus(
+                        eq(status),
+                        any(Pageable.class)
+                )
+        ).thenReturn(
+                List.of(entities)
+        );
     }
 }

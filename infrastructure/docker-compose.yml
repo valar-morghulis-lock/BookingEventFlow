@@ -14,10 +14,21 @@ services:
       POSTGRES_PASSWORD: ${EVENT_DB_PASSWORD}
 
     ports:
-      - "${EVENT_DB_PORT}:5432"
+      - "${EVENT_DB_PORT:-5432}:5432"
 
     volumes:
       - event-service-db-data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${EVENT_DB_USERNAME} -d ${EVENT_DB_NAME}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
     networks:
       - booking-event-flow-network

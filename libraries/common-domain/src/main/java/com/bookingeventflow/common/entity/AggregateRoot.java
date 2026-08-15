@@ -3,7 +3,6 @@ package com.bookingeventflow.common.entity;
 import com.bookingeventflow.common.event.DomainEvent;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public abstract class AggregateRoot extends AuditableEntity {
@@ -15,7 +14,7 @@ public abstract class AggregateRoot extends AuditableEntity {
     }
 
     public List<DomainEvent> domainEvents() {
-        return Collections.unmodifiableList(domainEvents);
+        return List.copyOf(domainEvents);
     }
 
     public void clearDomainEvents() {

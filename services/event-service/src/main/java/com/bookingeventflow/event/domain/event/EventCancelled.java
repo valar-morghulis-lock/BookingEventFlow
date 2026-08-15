@@ -7,6 +7,18 @@ import java.util.UUID;
 
 public record EventCancelled(
         UUID eventId,
+        UUID aggregateId,
         Instant occurredAt
 ) implements DomainEvent {
+
+    public EventCancelled(
+            UUID aggregateId,
+            Instant occurredAt
+    ) {
+        this(
+                UUID.randomUUID(),
+                aggregateId,
+                occurredAt
+        );
+    }
 }

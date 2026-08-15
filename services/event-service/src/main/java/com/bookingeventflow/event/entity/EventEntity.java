@@ -1,38 +1,19 @@
 package com.bookingeventflow.event.entity;
 
+import com.bookingeventflow.common.entity.AuditableEntity;
 import com.bookingeventflow.event.domain.model.EventStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
 @Table(name = "events")
-public class EventEntity {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(
-            name = "id",
-            nullable = false,
-            updatable = false
-    )
-    private UUID id;
-
-    @Version
-    @Column(
-            name = "version",
-            nullable = false
-    )
-    private Long version;
+public class EventEntity extends AuditableEntity {
 
     @Column(
             name = "name",
@@ -40,9 +21,7 @@ public class EventEntity {
     )
     private String name;
 
-    @Column(
-            name = "description"
-    )
+    @Column(name = "description")
     private String description;
 
     @Column(
@@ -58,18 +37,17 @@ public class EventEntity {
     )
     private EventStatus status;
 
+    /**
+     * Required by JPA.
+     */
     protected EventEntity() {
-        // Required by JPA
     }
 
     /**
-     * Constructor for NEW entities.
+     * Creates a NEW entity.
      *
-     * ID is intentionally absent.
-     * Hibernate generates it.
-     *
-     * Version is intentionally absent.
-     * Hibernate manages it through @Version.
+     * BaseEntity generates the UUID.
+     * Hibernate manages the @Version field.
      */
     public EventEntity(
             String name,
@@ -83,12 +61,27 @@ public class EventEntity {
         this.status = status;
     }
 
-    public UUID id() {
-        return id;
-    }
+    /**
+     * Reconstructs an EXISTING persisted entity.
+     *
+     * This constructor is intentionally different from the
+     * new-entity constructor. It allows infrastructure/tests
+     * to represent an entity that already exists in the database.
+     */
+    public EventEntity(
+            UUID id,
+            Long version,
+            String name,
+            String description,
+            Instant scheduledAt,
+            EventStatus status
+    ) {
+        this.name = name;
+        this.description = description;
+        this.scheduledAt = scheduledAt;
+        this.status = status;
 
-    public Long version() {
-        return version;
+        reconstituteIdentity(id, version);
     }
 
     public String getName() {

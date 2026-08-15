@@ -19,11 +19,15 @@ public interface EventMapper {
      *
      * ID:
      *   Not assigned here.
-     *   Hibernate generates it using @GeneratedValue.
+     *   BaseEntity generates the UUID.
      *
      * Version:
      *   Not assigned here.
-     *   Hibernate manages it using @Version.
+     *   Hibernate manages it through @Version.
+     *
+     * Auditing fields:
+     *   Not assigned here.
+     *   Spring Data JPA auditing populates them automatically.
      */
     default EventEntity toNewEntity(Event event) {
 
@@ -45,6 +49,9 @@ public interface EventMapper {
      * Updates an existing entity.
      *
      * ID and version are deliberately untouched.
+     *
+     * Auditing fields are deliberately untouched.
+     * Spring Data JPA auditing manages them automatically.
      */
     default void updateEntity(
             Event event,

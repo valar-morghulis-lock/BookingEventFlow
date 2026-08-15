@@ -10,4 +10,10 @@ spring:
     driver-class-name: org.postgresql.Driver
 
 server:
-  port: ${EVENT_SERVICE_PORT:8081}
+  port: ${EVENT_SERVICE_PORT}
+
+logging:
+  level:
+    root: INFO
+    com.bookingeventflow: DEBUG
+    org.springframework.web: DEBUG
