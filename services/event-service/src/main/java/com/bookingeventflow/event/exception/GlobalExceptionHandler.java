@@ -15,8 +15,10 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -34,24 +36,24 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(EventNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleEventNotFound(
-            EventNotFoundException ex,
+            EventNotFoundException exception,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 HttpStatus.NOT_FOUND,
-                ex.getMessage(),
+                exception.getMessage(),
                 request
         );
     }
 
     @ExceptionHandler(InvalidEventStateException.class)
     public ResponseEntity<ErrorResponse> handleInvalidEventState(
-            InvalidEventStateException ex,
+            InvalidEventStateException exception,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 HttpStatus.CONFLICT,
-                ex.getMessage(),
+                exception.getMessage(),
                 request
         );
     }
@@ -61,17 +63,15 @@ public class GlobalExceptionHandler {
     // =========================================================
 
     /**
-     * Handles invalid, malformed or corrupted pagination cursors.
-     *
-     * A cursor is client-provided input, therefore a decoding failure
-     * is treated as a BAD_REQUEST rather than a server error.
+     * Client-provided cursor is malformed, corrupted, or otherwise
+     * cannot be decoded.
      */
     @ExceptionHandler(CursorDecodingException.class)
     public ResponseEntity<ErrorResponse> handleCursorDecoding(
-            CursorDecodingException ex,
+            CursorDecodingException exception,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Invalid pagination cursor.",
                 request
@@ -83,17 +83,15 @@ public class GlobalExceptionHandler {
     // =========================================================
 
     /**
-     * Handles optimistic locking conflicts.
-     *
-     * This occurs when another transaction has modified the same
-     * event between the read and update operation.
+     * Another transaction modified the same event before the current
+     * transaction could complete its update.
      */
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(
-            OptimisticLockingFailureException ex,
+            OptimisticLockingFailureException exception,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 HttpStatus.CONFLICT,
                 "The event was modified by another request. "
                         + "Please reload the event and try again.",
@@ -106,21 +104,15 @@ public class GlobalExceptionHandler {
     // =========================================================
 
     /**
-     * Handles validation failures on @RequestBody objects.
-     *
-     * Example:
-     *
-     * {
-     *     "name": ""
-     * }
+     * Handles Bean Validation failures on @RequestBody objects.
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(
-            MethodArgumentNotValidException ex,
+            MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
-        Map<String, List<String>> errors =
-                ex.getBindingResult()
+        Map<String, List<String>> validationErrors =
+                exception.getBindingResult()
                         .getFieldErrors()
                         .stream()
                         .collect(Collectors.groupingBy(
@@ -131,30 +123,24 @@ public class GlobalExceptionHandler {
                                 )
                         ));
 
-        return error(
+        return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Validation failed",
                 request,
-                errors
+                validationErrors
         );
     }
 
     /**
-     * Handles validation failures on controller parameters.
-     *
-     * Example:
-     *
-     * @Min(1)
-     * @Max(100)
-     * int limit
+     * Handles Bean Validation failures on controller parameters.
      */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ErrorResponse> handleConstraintViolation(
-            ConstraintViolationException ex,
+            ConstraintViolationException exception,
             HttpServletRequest request
     ) {
-        Map<String, List<String>> errors =
-                ex.getConstraintViolations()
+        Map<String, List<String>> validationErrors =
+                exception.getConstraintViolations()
                         .stream()
                         .collect(Collectors.groupingBy(
                                 this::extractParameterName,
@@ -164,11 +150,11 @@ public class GlobalExceptionHandler {
                                 )
                         ));
 
-        return error(
+        return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Validation failed",
                 request,
-                errors
+                validationErrors
         );
     }
 
@@ -178,20 +164,13 @@ public class GlobalExceptionHandler {
 
     /**
      * Handles malformed JSON and invalid JSON values.
-     *
-     * Examples:
-     *
-     * - malformed JSON
-     * - invalid UUID
-     * - invalid LocalDateTime
-     * - invalid enum value
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleMessageNotReadable(
-            HttpMessageNotReadableException ex,
+            HttpMessageNotReadableException exception,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Request body is invalid or malformed.",
                 request
@@ -207,14 +186,39 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(
-            MethodArgumentTypeMismatchException ex,
+            MethodArgumentTypeMismatchException exception,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 HttpStatus.BAD_REQUEST,
                 "Invalid value for parameter '"
-                        + ex.getName()
+                        + exception.getName()
                         + "'.",
+                request
+        );
+    }
+
+    // =========================================================
+    // RESOURCE HANDLING
+    // =========================================================
+
+    /**
+     * Handles requests for resources that do not exist.
+     *
+     * This is particularly relevant for requests such as:
+     *
+     * GET /favicon.ico when testing API via APIDog, for example :D
+     *
+     * It should not be treated as an unexpected server error.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResourceNotFound(
+            NoResourceFoundException exception,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(
+                HttpStatus.NOT_FOUND,
+                "Resource not found.",
                 request
         );
     }
@@ -224,21 +228,31 @@ public class GlobalExceptionHandler {
     // =========================================================
 
     /**
-     * Handles database constraint violations.
-     *
-     * The underlying database exception is intentionally not exposed
-     * to the API client.
+     * Handles database constraint violations without exposing
+     * database-specific implementation details to API clients.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
-            DataIntegrityViolationException ex,
+            DataIntegrityViolationException exception,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 HttpStatus.CONFLICT,
                 "The request could not be completed "
                         + "because it violates a data constraint.",
                 request
+        );
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleClientDisconnect(
+            AsyncRequestNotUsableException ex,
+            HttpServletRequest request
+    ) {
+        log.debug(
+                "Client disconnected while processing {} {}",
+                request.getMethod(),
+                request.getRequestURI()
         );
     }
 
@@ -247,25 +261,24 @@ public class GlobalExceptionHandler {
     // =========================================================
 
     /**
-     * Last-resort exception handler.
+     * Last-resort handler for unexpected application exceptions.
      *
-     * Do not expose the underlying exception message to clients.
-     * The exception should be logged by the application's
-     * observability/logging layer.
+     * The underlying exception is logged but never exposed to the
+     * API client.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpectedException(
-            Exception ex,
+            Exception exception,
             HttpServletRequest request
     ) {
         log.error(
                 "Unhandled exception while processing {} {}",
                 request.getMethod(),
                 request.getRequestURI(),
-                ex
+                exception
         );
 
-        return error(
+        return buildErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred.",
                 request
@@ -276,12 +289,12 @@ public class GlobalExceptionHandler {
     // RESPONSE FACTORY
     // =========================================================
 
-    private ResponseEntity<ErrorResponse> error(
+    private ResponseEntity<ErrorResponse> buildErrorResponse(
             HttpStatus status,
             String message,
             HttpServletRequest request
     ) {
-        return error(
+        return buildErrorResponse(
                 status,
                 message,
                 request,
@@ -289,7 +302,7 @@ public class GlobalExceptionHandler {
         );
     }
 
-    private ResponseEntity<ErrorResponse> error(
+    private ResponseEntity<ErrorResponse> buildErrorResponse(
             HttpStatus status,
             String message,
             HttpServletRequest request,
@@ -313,21 +326,22 @@ public class GlobalExceptionHandler {
     // VALIDATION HELPERS
     // =========================================================
 
-    private String resolveValidationMessage(FieldError error) {
-        return error.getDefaultMessage() != null
-                ? error.getDefaultMessage()
+    private String resolveValidationMessage(FieldError fieldError) {
+        return fieldError.getDefaultMessage() != null
+                ? fieldError.getDefaultMessage()
                 : "Invalid value";
     }
 
     private String extractParameterName(
             ConstraintViolation<?> violation
     ) {
-        String path = violation.getPropertyPath().toString();
+        String propertyPath = violation.getPropertyPath().toString();
+        int lastDotIndex = propertyPath.lastIndexOf('.');
 
-        int lastDot = path.lastIndexOf('.');
+        if (lastDotIndex >= 0 && lastDotIndex < propertyPath.length() - 1) {
+            return propertyPath.substring(lastDotIndex + 1);
+        }
 
-        return lastDot >= 0 && lastDot < path.length() - 1
-                ? path.substring(lastDot + 1)
-                : path;
+        return propertyPath;
     }
 }
