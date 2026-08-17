@@ -54,28 +54,33 @@ class EventControllerTest {
             {
               "name": "Rock Concert",
               "description": "Live concert",
-              "scheduledAt": "2026-12-20T19:00:00Z"
+              "scheduledAt": "2026-12-20T19:00:00Z",
+              "numberOfRows": 10
             }
             """;
 
     private static final String UPDATED_REQUEST = """
-            {
-              "name": "Rock Concert",
-              "description": "Live concert 2x",
-              "scheduledAt": "2026-12-20T19:00:00Z"
-            }
-            """;
+        {
+            "name": "Rock Concert",
+            "description": "Live concert 2x",
+            "scheduledAt": "2026-12-20T19:00:00Z",
+            "numberOfRows": 5
+        }
+        """;
 
     private static final String INVALID_REQUEST = """
             {
               "name": "",
               "description": "",
-              "scheduledAt": "2020-01-01T00:00:00Z"
+              "scheduledAt": "2020-01-01T00:00:00Z",
+              "numberOfRows": 0
             }
             """;
 
     private static final Instant SCHEDULED_AT =
             Instant.parse("2026-12-20T19:00:00Z");
+
+    private static final int DEFAULT_NUMBER_OF_ROWS = 10;
 
     private static final String NEXT_CURSOR =
             "next-cursor";
@@ -116,6 +121,7 @@ class EventControllerTest {
                 name,
                 description,
                 SCHEDULED_AT,
+                DEFAULT_NUMBER_OF_ROWS,
                 status
         );
     }
@@ -167,6 +173,14 @@ class EventControllerTest {
                 .andExpect(
                         jsonPath("$.description")
                                 .value("Live concert")
+                )
+                .andExpect(
+                        jsonPath("$.scheduledAt")
+                                .value("2026-12-20T19:00:00Z")
+                )
+                .andExpect(
+                        jsonPath("$.numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
                 )
                 .andExpect(
                         jsonPath("$.status")
@@ -298,6 +312,14 @@ class EventControllerTest {
                                 .value("Live concert")
                 )
                 .andExpect(
+                        jsonPath("$.scheduledAt")
+                                .value("2026-12-20T19:00:00Z")
+                )
+                .andExpect(
+                        jsonPath("$.numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
+                )
+                .andExpect(
                         jsonPath("$.status")
                                 .value("DRAFT")
                 );
@@ -427,6 +449,10 @@ class EventControllerTest {
                                 .value(EVENT_ID.toString())
                 )
                 .andExpect(
+                        jsonPath("$.items[0].numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
+                )
+                .andExpect(
                         jsonPath("$.items[0].status")
                                 .value("DRAFT")
                 )
@@ -481,6 +507,10 @@ class EventControllerTest {
                 .andExpect(
                         jsonPath("$.items.length()")
                                 .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.items[0].numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
                 )
                 .andExpect(
                         jsonPath("$.items[0].status")
@@ -563,6 +593,10 @@ class EventControllerTest {
                                 .value(1)
                 )
                 .andExpect(
+                        jsonPath("$.items[0].numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
+                )
+                .andExpect(
                         jsonPath("$.nextCursor")
                                 .value("next-cursor-2")
                 );
@@ -616,6 +650,10 @@ class EventControllerTest {
                 .andExpect(
                         jsonPath("$.items.length()")
                                 .value(1)
+                )
+                .andExpect(
+                        jsonPath("$.items[0].numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
                 )
                 .andExpect(
                         jsonPath("$.items[0].status")
@@ -978,6 +1016,14 @@ class EventControllerTest {
                                 .value("Live concert 2x")
                 )
                 .andExpect(
+                        jsonPath("$.scheduledAt")
+                                .value("2026-12-20T19:00:00Z")
+                )
+                .andExpect(
+                        jsonPath("$.numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
+                )
+                .andExpect(
                         jsonPath("$.status")
                                 .value("DRAFT")
                 );
@@ -1167,6 +1213,10 @@ class EventControllerTest {
                 )
                 .andExpect(status().isOk())
                 .andExpect(
+                        jsonPath("$.numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
+                )
+                .andExpect(
                         jsonPath("$.status")
                                 .value("PUBLISHED")
                 );
@@ -1238,6 +1288,10 @@ class EventControllerTest {
                 )
                 .andExpect(status().isOk())
                 .andExpect(
+                        jsonPath("$.numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
+                )
+                .andExpect(
                         jsonPath("$.status")
                                 .value("CANCELLED")
                 );
@@ -1308,6 +1362,10 @@ class EventControllerTest {
                         post(EVENT_URL + "/complete")
                 )
                 .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.numberOfRows")
+                                .value(DEFAULT_NUMBER_OF_ROWS)
+                )
                 .andExpect(
                         jsonPath("$.status")
                                 .value("COMPLETED")

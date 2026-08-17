@@ -1,10 +1,7 @@
 package com.bookingeventflow.event.presentation.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Future;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.*;
 
 import java.time.Instant;
 
@@ -34,6 +31,15 @@ public record CreateEventRequest(
         )
         @NotNull(message = "Scheduled time must not be null")
         @Future(message = "Scheduled time must be in the future")
-        Instant scheduledAt
+        Instant scheduledAt,
+
+        @Schema(
+                description = "Number of seating rows. Each row contains exactly 10 seats.",
+                example = "50",
+                minimum = "1"
+        )
+        @NotNull(message = "Number of rows must not be null")
+        @Min(value = 1, message = "Number of rows must be at least 1")
+        Integer numberOfRows
 ) {
 }

@@ -2,6 +2,7 @@ package com.bookingeventflow.event.presentation.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -17,7 +18,10 @@ public record UpdateEventRequest(
                 maxLength = 200
         )
         @NotBlank(message = "Name must not be blank")
-        @Size(max = 200, message = "Name must not exceed 200 characters")
+        @Size(
+                max = 200,
+                message = "Name must not exceed 200 characters"
+        )
         String name,
 
         @Schema(
@@ -25,7 +29,10 @@ public record UpdateEventRequest(
                 example = "Updated conference description.",
                 maxLength = 2000
         )
-        @Size(max = 2000, message = "Description must not exceed 2000 characters")
+        @Size(
+                max = 2000,
+                message = "Description must not exceed 2000 characters"
+        )
         String description,
 
         @Schema(
@@ -34,6 +41,18 @@ public record UpdateEventRequest(
         )
         @NotNull(message = "Scheduled time must not be null")
         @Future(message = "Scheduled time must be in the future")
-        Instant scheduledAt
+        Instant scheduledAt,
+
+        @Schema(
+                description = "Number of seating rows. Each row contains exactly 10 seats.",
+                example = "50",
+                minimum = "1"
+        )
+        @NotNull(message = "Number of rows must not be null")
+        @Min(
+                value = 1,
+                message = "Number of rows must be at least 1"
+        )
+        Integer numberOfRows
 ) {
 }

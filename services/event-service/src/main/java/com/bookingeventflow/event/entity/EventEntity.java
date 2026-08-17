@@ -30,6 +30,12 @@ public class EventEntity extends AuditableEntity {
     )
     private Instant scheduledAt;
 
+    @Column(
+            name = "number_of_rows",
+            nullable = false
+    )
+    private int numberOfRows;
+
     @Enumerated(EnumType.STRING)
     @Column(
             name = "status",
@@ -44,29 +50,24 @@ public class EventEntity extends AuditableEntity {
     }
 
     /**
-     * Creates a NEW entity.
-     *
-     * BaseEntity generates the UUID.
-     * Hibernate manages the @Version field.
+     * Creates a new entity.
      */
     public EventEntity(
             String name,
             String description,
             Instant scheduledAt,
+            int numberOfRows,
             EventStatus status
     ) {
         this.name = name;
         this.description = description;
         this.scheduledAt = scheduledAt;
+        this.numberOfRows = numberOfRows;
         this.status = status;
     }
 
     /**
-     * Reconstructs an EXISTING persisted entity.
-     *
-     * This constructor is intentionally different from the
-     * new-entity constructor. It allows infrastructure/tests
-     * to represent an entity that already exists in the database.
+     * Reconstructs an existing persisted entity.
      */
     public EventEntity(
             UUID id,
@@ -74,14 +75,19 @@ public class EventEntity extends AuditableEntity {
             String name,
             String description,
             Instant scheduledAt,
+            int numberOfRows,
             EventStatus status
     ) {
         this.name = name;
         this.description = description;
         this.scheduledAt = scheduledAt;
+        this.numberOfRows = numberOfRows;
         this.status = status;
 
-        reconstituteIdentity(id, version);
+        reconstituteIdentity(
+                id,
+                version
+        );
     }
 
     public String getName() {
@@ -94,6 +100,10 @@ public class EventEntity extends AuditableEntity {
 
     public Instant getScheduledAt() {
         return scheduledAt;
+    }
+
+    public int getNumberOfRows() {
+        return numberOfRows;
     }
 
     public EventStatus getStatus() {
@@ -110,6 +120,10 @@ public class EventEntity extends AuditableEntity {
 
     public void setScheduledAt(Instant scheduledAt) {
         this.scheduledAt = scheduledAt;
+    }
+
+    public void setNumberOfRows(int numberOfRows) {
+        this.numberOfRows = numberOfRows;
     }
 
     public void setStatus(EventStatus status) {

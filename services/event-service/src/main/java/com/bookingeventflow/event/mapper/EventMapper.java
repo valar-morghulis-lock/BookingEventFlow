@@ -15,19 +15,12 @@ import org.mapstruct.MappingTarget;
 public interface EventMapper {
 
     /**
-     * Creates a brand-new entity.
+     * Maps a newly created domain event to a new persistence entity.
      *
-     * ID:
-     *   Not assigned here.
-     *   BaseEntity generates the UUID.
-     *
-     * Version:
-     *   Not assigned here.
-     *   Hibernate manages it through @Version.
-     *
-     * Auditing fields:
-     *   Not assigned here.
-     *   Spring Data JPA auditing populates them automatically.
+     * The entity owns persistence concerns such as:
+     * - ID generation
+     * - optimistic locking version
+     * - auditing fields
      */
     default EventEntity toNewEntity(Event event) {
 
@@ -37,21 +30,21 @@ public interface EventMapper {
 
         return new EventEntity(
                 event.name().value(),
-                event.description() != null
-                        ? event.description().value()
-                        : null,
+                descriptionValue(event),
                 event.scheduledAt(),
+                event.numberOfRows(),
                 event.status()
         );
     }
 
     /**
-     * Updates an existing entity.
+     * Updates the persistence representation of an existing event.
      *
-     * ID and version are deliberately untouched.
+     * Identity, version and auditing fields are intentionally not
+     * modified here.
      *
-     * Auditing fields are deliberately untouched.
-     * Spring Data JPA auditing manages them automatically.
+     * The domain aggregate is responsible for deciding whether
+     * these changes are allowed.
      */
     default void updateEntity(
             Event event,
@@ -67,13 +60,15 @@ public interface EventMapper {
         );
 
         entity.setDescription(
-                event.description() != null
-                        ? event.description().value()
-                        : null
+                descriptionValue(event)
         );
 
         entity.setScheduledAt(
                 event.scheduledAt()
+        );
+
+        entity.setNumberOfRows(
+                event.numberOfRows()
         );
 
         entity.setStatus(
@@ -82,10 +77,9 @@ public interface EventMapper {
     }
 
     /**
-     * Reconstructs the domain object from a persisted entity.
+     * Reconstitutes the domain aggregate from persistence state.
      *
-     * ID and version must be preserved because they are
-     * part of the persisted aggregate state.
+     * No domain events are generated during reconstitution.
      */
     default Event toDomain(EventEntity entity) {
 
@@ -97,21 +91,15 @@ public interface EventMapper {
                 entity.id(),
                 entity.version(),
                 EventName.of(entity.getName()),
-                entity.getDescription() != null
-                        ? EventDescription.of(
-                        entity.getDescription()
-                )
-                        : null,
+                description(entity),
                 entity.getScheduledAt(),
+                entity.getNumberOfRows(),
                 entity.getStatus()
         );
     }
 
     /**
-     * Converts the persisted entity into the API response.
-     *
-     * The generated ID and current optimistic-lock version
-     * are exposed in the response.
+     * Maps persistence state to the API representation.
      */
     default EventResponse toResponse(EventEntity entity) {
 
@@ -125,7 +113,30 @@ public interface EventMapper {
                 entity.getName(),
                 entity.getDescription(),
                 entity.getScheduledAt(),
+                entity.getNumberOfRows(),
                 entity.getStatus()
         );
+    }
+
+    private static String descriptionValue(Event event) {
+
+        EventDescription description =
+                event.description();
+
+        return description != null
+                ? description.value()
+                : null;
+    }
+
+    private static EventDescription description(
+            EventEntity entity
+    ) {
+
+        String description =
+                entity.getDescription();
+
+        return description != null
+                ? EventDescription.of(description)
+                : null;
     }
 }
