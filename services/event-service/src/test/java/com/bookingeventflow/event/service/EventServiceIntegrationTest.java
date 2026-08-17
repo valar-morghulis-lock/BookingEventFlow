@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class EventServiceIntegrationTest {
 
     private static final int DEFAULT_LIMIT = 20;
+    private static final int DEFAULT_NUMBER_OF_ROWS = 5;
 
     private static final Instant FIRST_SCHEDULED_AT =
             Instant.parse("2026-12-20T19:00:00Z");
@@ -127,7 +128,8 @@ class EventServiceIntegrationTest {
                 new CreateEventRequest(
                         "Rock Concert",
                         "Live concert",
-                        FIRST_SCHEDULED_AT
+                        FIRST_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 );
 
         EventResponse result =
@@ -151,6 +153,16 @@ class EventServiceIntegrationTest {
         );
 
         assertEquals(
+                FIRST_SCHEDULED_AT,
+                result.scheduledAt()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                result.numberOfRows()
+        );
+
+        assertEquals(
                 EventStatus.DRAFT,
                 result.status()
         );
@@ -167,6 +179,11 @@ class EventServiceIntegrationTest {
         assertEquals(
                 0L,
                 persisted.version()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                persisted.getNumberOfRows()
         );
 
         assertEquals(
@@ -187,7 +204,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Rock Concert",
                                 "Live concert",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -204,6 +222,11 @@ class EventServiceIntegrationTest {
         assertEquals(
                 "Rock Concert",
                 result.name()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                result.numberOfRows()
         );
 
         assertEquals(
@@ -235,7 +258,8 @@ class EventServiceIntegrationTest {
                 new CreateEventRequest(
                         "Rock Concert",
                         "Live concert",
-                        FIRST_SCHEDULED_AT
+                        FIRST_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 )
         );
 
@@ -243,7 +267,8 @@ class EventServiceIntegrationTest {
                 new CreateEventRequest(
                         "Jazz Festival",
                         "Live jazz",
-                        SECOND_SCHEDULED_AT
+                        SECOND_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 )
         );
 
@@ -311,7 +336,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Draft Event",
                                 "Draft",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -320,7 +346,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Published Event",
                                 "Published",
-                                SECOND_SCHEDULED_AT
+                                SECOND_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -358,7 +385,8 @@ class EventServiceIntegrationTest {
                 new CreateEventRequest(
                         "Draft Event",
                         "Draft",
-                        FIRST_SCHEDULED_AT
+                        FIRST_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 )
         );
 
@@ -367,7 +395,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Published Event",
                                 "Published",
-                                SECOND_SCHEDULED_AT
+                                SECOND_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -406,7 +435,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Cancelled Event",
                                 "Cancelled",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -418,7 +448,8 @@ class EventServiceIntegrationTest {
                 new CreateEventRequest(
                         "Draft Event",
                         "Draft",
-                        SECOND_SCHEDULED_AT
+                        SECOND_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 )
         );
 
@@ -453,7 +484,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Completed Event",
                                 "Completed",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -495,7 +527,8 @@ class EventServiceIntegrationTest {
                 new CreateEventRequest(
                         "Draft Event",
                         "Draft",
-                        FIRST_SCHEDULED_AT
+                        FIRST_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 )
         );
 
@@ -529,7 +562,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Published Event 1",
                                 "Published",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -538,7 +572,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Published Event 2",
                                 "Published",
-                                SECOND_SCHEDULED_AT
+                                SECOND_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -547,7 +582,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Published Event 3",
                                 "Published",
-                                THIRD_SCHEDULED_AT
+                                THIRD_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -615,7 +651,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Rock Concert",
                                 "Live concert",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -628,7 +665,8 @@ class EventServiceIntegrationTest {
                 new UpdateEventRequest(
                         "Rock Concert Updated",
                         "Updated description",
-                        SECOND_SCHEDULED_AT
+                        SECOND_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 );
 
         EventResponse updated =
@@ -663,6 +701,11 @@ class EventServiceIntegrationTest {
         );
 
         assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                updated.numberOfRows()
+        );
+
+        assertEquals(
                 EventStatus.DRAFT,
                 updated.status()
         );
@@ -678,7 +721,8 @@ class EventServiceIntegrationTest {
                 new UpdateEventRequest(
                         "Updated",
                         "Updated description",
-                        FIRST_SCHEDULED_AT
+                        FIRST_SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS
                 );
 
         assertThrows(
@@ -702,7 +746,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Rock Concert",
                                 "Live concert",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -721,6 +766,11 @@ class EventServiceIntegrationTest {
                 published.version()
         );
 
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                published.numberOfRows()
+        );
+
         EventEntity persisted =
                 eventRepository.findById(
                         created.id()
@@ -729,6 +779,11 @@ class EventServiceIntegrationTest {
         assertEquals(
                 EventStatus.PUBLISHED,
                 persisted.getStatus()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                persisted.getNumberOfRows()
         );
     }
 
@@ -744,7 +799,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Rock Concert",
                                 "Live concert",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -763,6 +819,11 @@ class EventServiceIntegrationTest {
                 cancelled.version()
         );
 
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                cancelled.numberOfRows()
+        );
+
         EventEntity persisted =
                 eventRepository.findById(
                         created.id()
@@ -771,6 +832,11 @@ class EventServiceIntegrationTest {
         assertEquals(
                 EventStatus.CANCELLED,
                 persisted.getStatus()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                persisted.getNumberOfRows()
         );
     }
 
@@ -786,7 +852,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Rock Concert",
                                 "Live concert",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -815,6 +882,11 @@ class EventServiceIntegrationTest {
                 completed.version()
         );
 
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                completed.numberOfRows()
+        );
+
         EventEntity persisted =
                 eventRepository.findById(
                         created.id()
@@ -823,6 +895,11 @@ class EventServiceIntegrationTest {
         assertEquals(
                 EventStatus.COMPLETED,
                 persisted.getStatus()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                persisted.getNumberOfRows()
         );
     }
 
@@ -838,7 +915,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Rock Concert",
                                 "Live concert",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -880,7 +958,8 @@ class EventServiceIntegrationTest {
                         new CreateEventRequest(
                                 "Rock Concert",
                                 "Live concert",
-                                FIRST_SCHEDULED_AT
+                                FIRST_SCHEDULED_AT,
+                                DEFAULT_NUMBER_OF_ROWS
                         )
                 );
 
@@ -919,6 +998,16 @@ class EventServiceIntegrationTest {
         assertEquals(
                 0L,
                 second.version()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                first.getNumberOfRows()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                second.getNumberOfRows()
         );
 
         transactionTemplate.executeWithoutResult(
@@ -975,6 +1064,11 @@ class EventServiceIntegrationTest {
         assertEquals(
                 1L,
                 persisted.version()
+        );
+
+        assertEquals(
+                DEFAULT_NUMBER_OF_ROWS,
+                persisted.getNumberOfRows()
         );
     }
 }

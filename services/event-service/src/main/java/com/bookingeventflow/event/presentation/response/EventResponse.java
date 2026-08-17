@@ -40,6 +40,13 @@ public record EventResponse(
         Instant scheduledAt,
 
         @Schema(
+                description = "Number of seating rows configured for the event. Each row contains 10 seats.",
+                example = "50",
+                minimum = "1"
+        )
+        int numberOfRows,
+
+        @Schema(
                 description = "Current lifecycle status of the event.",
                 example = "PUBLISHED"
         )

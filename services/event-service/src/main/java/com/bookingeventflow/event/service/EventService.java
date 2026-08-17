@@ -7,6 +7,7 @@ import com.bookingeventflow.event.domain.valueobject.EventDescription;
 import com.bookingeventflow.event.domain.valueobject.EventName;
 import com.bookingeventflow.event.entity.EventEntity;
 import com.bookingeventflow.event.exception.EventNotFoundException;
+import com.bookingeventflow.event.exception.InvalidEventStateException;
 import com.bookingeventflow.event.mapper.EventMapper;
 import com.bookingeventflow.event.observability.metrics.EventMetrics;
 import com.bookingeventflow.event.observability.metrics.EventMetrics.Result;
@@ -70,19 +71,26 @@ public class EventService {
             value = "events.create.duration",
             description = "Event creation duration"
     )
-    public EventResponse create(CreateEventRequest request) {
+    public EventResponse create(
+            CreateEventRequest request
+    ) {
 
         Event event = Event.create(
                 EventName.of(request.name()),
                 EventDescription.of(request.description()),
-                request.scheduledAt()
+                request.scheduledAt(),
+                request.numberOfRows()
         );
 
-        EventEntity saved = eventRepository.saveAndFlush(
-                eventMapper.toNewEntity(event)
-        );
+        EventEntity saved =
+                eventRepository.saveAndFlush(
+                        eventMapper.toNewEntity(event)
+                );
 
-        eventMetrics.recordOperation(OP_CREATE, Result.SUCCESS);
+        eventMetrics.recordOperation(
+                OP_CREATE,
+                Result.SUCCESS
+        );
 
         log.debug(
                 "Created event {} with version {}",
@@ -102,12 +110,22 @@ public class EventService {
             value = "events.get_by_id.duration",
             description = "Event retrieval by ID duration"
     )
-    public EventResponse getById(UUID id) {
+    public EventResponse getById(
+            UUID id
+    ) {
 
         EventResponse response =
-                eventMapper.toResponse(findById(id, OP_GET));
+                eventMapper.toResponse(
+                        findById(
+                                id,
+                                OP_GET
+                        )
+                );
 
-        eventMetrics.recordOperation(OP_GET, Result.SUCCESS);
+        eventMetrics.recordOperation(
+                OP_GET,
+                Result.SUCCESS
+        );
 
         return response;
     }
@@ -129,26 +147,44 @@ public class EventService {
 
         validatePageSize(limit);
 
-        Pageable pageable = PageRequest.of(0, limit + 1);
+        Pageable pageable =
+                PageRequest.of(
+                        0,
+                        limit + 1
+                );
 
         List<EventEntity> entities =
-                loadPage(status, after, pageable);
+                loadPage(
+                        status,
+                        after,
+                        pageable
+                );
 
-        boolean hasNext = entities.size() > limit;
+        boolean hasNext =
+                entities.size() > limit;
 
-        List<EventEntity> pageEntities = hasNext
-                ? entities.subList(0, limit)
-                : entities;
+        List<EventEntity> pageEntities =
+                hasNext
+                        ? entities.subList(
+                        0,
+                        limit
+                )
+                        : entities;
 
-        List<EventResponse> items = pageEntities.stream()
-                .map(eventMapper::toResponse)
-                .toList();
+        List<EventResponse> items =
+                pageEntities.stream()
+                        .map(eventMapper::toResponse)
+                        .toList();
 
-        String nextCursor = hasNext
-                ? createNextCursor(pageEntities)
-                : null;
+        String nextCursor =
+                hasNext
+                        ? createNextCursor(pageEntities)
+                        : null;
 
-        eventMetrics.recordOperation(OP_LIST, Result.SUCCESS);
+        eventMetrics.recordOperation(
+                OP_LIST,
+                Result.SUCCESS
+        );
 
         if (hasCursor(after)) {
             eventMetrics.recordCursorUsed();
@@ -186,29 +222,44 @@ public class EventService {
             UpdateEventRequest request
     ) {
 
-        EventEntity entity = findById(id, OP_UPDATE);
+        EventEntity entity =
+                findById(
+                        id,
+                        OP_UPDATE
+                );
 
-        Long previousVersion = entity.version();
+        Long previousVersion =
+                entity.version();
 
-        Event event = eventMapper.toDomain(entity);
+        Event event =
+                eventMapper.toDomain(entity);
 
         event.updateDetails(
                 EventName.of(request.name()),
                 EventDescription.of(request.description()),
-                request.scheduledAt()
+                request.scheduledAt(),
+                request.numberOfRows()
         );
 
-        eventMapper.updateEntity(event, entity);
+        eventMapper.updateEntity(
+                event,
+                entity
+        );
 
-        EventEntity saved = eventRepository.saveAndFlush(entity);
+        EventEntity saved =
+                eventRepository.saveAndFlush(entity);
 
-        eventMetrics.recordOperation(OP_UPDATE, Result.SUCCESS);
+        eventMetrics.recordOperation(
+                OP_UPDATE,
+                Result.SUCCESS
+        );
 
         log.debug(
-                "Updated event {} from version {} to {}",
+                "Updated event {} from version {} to {} with {} rows",
                 id,
                 previousVersion,
-                saved.version()
+                saved.version(),
+                saved.getNumberOfRows()
         );
 
         return eventMapper.toResponse(saved);
@@ -222,19 +273,43 @@ public class EventService {
             value = "events.publish.duration",
             description = "Event publication duration"
     )
-    public EventResponse publish(UUID id) {
+    public EventResponse publish(
+            UUID id
+    ) {
 
-        EventEntity entity = findById(id, OP_PUBLISH);
+        EventEntity entity =
+                findById(
+                        id,
+                        OP_PUBLISH
+                );
 
-        Event event = eventMapper.toDomain(entity);
+        Event event =
+                eventMapper.toDomain(entity);
 
-        event.publish();
+        try {
+            event.publish();
+        } catch (InvalidEventStateException exception) {
 
-        eventMapper.updateEntity(event, entity);
+            eventMetrics.recordOperation(
+                    OP_PUBLISH,
+                    Result.ERROR
+            );
 
-        EventEntity saved = eventRepository.saveAndFlush(entity);
+            throw exception;
+        }
 
-        eventMetrics.recordOperation(OP_PUBLISH, Result.SUCCESS);
+        eventMapper.updateEntity(
+                event,
+                entity
+        );
+
+        EventEntity saved =
+                eventRepository.saveAndFlush(entity);
+
+        eventMetrics.recordOperation(
+                OP_PUBLISH,
+                Result.SUCCESS
+        );
 
         log.debug(
                 "Published event {} with version {}",
@@ -253,19 +328,43 @@ public class EventService {
             value = "events.cancel.duration",
             description = "Event cancellation duration"
     )
-    public EventResponse cancel(UUID id) {
+    public EventResponse cancel(
+            UUID id
+    ) {
 
-        EventEntity entity = findById(id, OP_CANCEL);
+        EventEntity entity =
+                findById(
+                        id,
+                        OP_CANCEL
+                );
 
-        Event event = eventMapper.toDomain(entity);
+        Event event =
+                eventMapper.toDomain(entity);
 
-        event.cancel();
+        try {
+            event.cancel();
+        } catch (InvalidEventStateException exception) {
 
-        eventMapper.updateEntity(event, entity);
+            eventMetrics.recordOperation(
+                    OP_CANCEL,
+                    Result.ERROR
+            );
 
-        EventEntity saved = eventRepository.saveAndFlush(entity);
+            throw exception;
+        }
 
-        eventMetrics.recordOperation(OP_CANCEL, Result.SUCCESS);
+        eventMapper.updateEntity(
+                event,
+                entity
+        );
+
+        EventEntity saved =
+                eventRepository.saveAndFlush(entity);
+
+        eventMetrics.recordOperation(
+                OP_CANCEL,
+                Result.SUCCESS
+        );
 
         log.debug(
                 "Cancelled event {} with version {}",
@@ -284,19 +383,43 @@ public class EventService {
             value = "events.complete.duration",
             description = "Event completion duration"
     )
-    public EventResponse complete(UUID id) {
+    public EventResponse complete(
+            UUID id
+    ) {
 
-        EventEntity entity = findById(id, OP_COMPLETE);
+        EventEntity entity =
+                findById(
+                        id,
+                        OP_COMPLETE
+                );
 
-        Event event = eventMapper.toDomain(entity);
+        Event event =
+                eventMapper.toDomain(entity);
 
-        event.complete();
+        try {
+            event.complete();
+        } catch (InvalidEventStateException exception) {
 
-        eventMapper.updateEntity(event, entity);
+            eventMetrics.recordOperation(
+                    OP_COMPLETE,
+                    Result.ERROR
+            );
 
-        EventEntity saved = eventRepository.saveAndFlush(entity);
+            throw exception;
+        }
 
-        eventMetrics.recordOperation(OP_COMPLETE, Result.SUCCESS);
+        eventMapper.updateEntity(
+                event,
+                entity
+        );
+
+        EventEntity saved =
+                eventRepository.saveAndFlush(entity);
+
+        eventMetrics.recordOperation(
+                OP_COMPLETE,
+                Result.SUCCESS
+        );
 
         log.debug(
                 "Completed event {} with version {}",
@@ -315,15 +438,27 @@ public class EventService {
             value = "events.delete.duration",
             description = "Event deletion duration"
     )
-    public void delete(UUID id) {
+    public void delete(
+            UUID id
+    ) {
 
-        EventEntity entity = findById(id, OP_DELETE);
+        EventEntity entity =
+                findById(
+                        id,
+                        OP_DELETE
+                );
 
         eventRepository.delete(entity);
 
-        eventMetrics.recordOperation(OP_DELETE, Result.SUCCESS);
+        eventMetrics.recordOperation(
+                OP_DELETE,
+                Result.SUCCESS
+        );
 
-        log.debug("Deleted event {}", id);
+        log.debug(
+                "Deleted event {}",
+                id
+        );
     }
 
     // =====================================================================
@@ -337,15 +472,19 @@ public class EventService {
     ) {
 
         if (!hasCursor(after)) {
+
             return status == null
-                    ? eventRepository.findFirstKeysetPage(pageable)
+                    ? eventRepository.findFirstKeysetPage(
+                    pageable
+            )
                     : eventRepository.findFirstKeysetPageByStatus(
                     status,
                     pageable
             );
         }
 
-        EventCursor cursor = cursorCodec.decode(after);
+        EventCursor cursor =
+                cursorCodec.decode(after);
 
         return status == null
                 ? eventRepository.findNextKeysetPage(
@@ -366,7 +505,9 @@ public class EventService {
     ) {
 
         EventEntity lastEntity =
-                pageEntities.get(pageEntities.size() - 1);
+                pageEntities.get(
+                        pageEntities.size() - 1
+                );
 
         return cursorCodec.encode(
                 new EventCursor(
@@ -382,25 +523,40 @@ public class EventService {
      * complete/delete) so failure rates are attributable per operation
      * rather than lumped into a single generic counter.
      */
-    private EventEntity findById(UUID id, String operation) {
+    private EventEntity findById(
+            UUID id,
+            String operation
+    ) {
 
         return eventRepository.findById(id)
                 .orElseThrow(() -> {
-                    eventMetrics.recordOperation(operation, Result.NOT_FOUND);
+
+                    eventMetrics.recordOperation(
+                            operation,
+                            Result.NOT_FOUND
+                    );
 
                     return new EventNotFoundException(id);
                 });
     }
 
-    private boolean hasCursor(String after) {
-        return after != null && !after.isBlank();
+    private boolean hasCursor(
+            String after
+    ) {
+        return after != null &&
+                !after.isBlank();
     }
 
-    private void validatePageSize(int limit) {
+    private void validatePageSize(
+            int limit
+    ) {
 
-        if (limit < 1 || limit > MAX_PAGE_SIZE) {
+        if (limit < 1 ||
+                limit > MAX_PAGE_SIZE) {
+
             throw new IllegalArgumentException(
-                    "Page size must be between 1 and " + MAX_PAGE_SIZE
+                    "Page size must be between 1 and " +
+                            MAX_PAGE_SIZE
             );
         }
     }

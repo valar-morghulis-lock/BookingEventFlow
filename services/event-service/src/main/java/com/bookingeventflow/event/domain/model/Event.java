@@ -15,9 +15,12 @@ import java.util.UUID;
 
 public class Event extends AggregateRoot {
 
+    public static final int SEATS_PER_ROW = 10;
+
     private EventName name;
     private EventDescription description;
     private Instant scheduledAt;
+    private int numberOfRows;
     private EventStatus status;
 
     /**
@@ -27,49 +30,95 @@ public class Event extends AggregateRoot {
     protected Event() {
     }
 
-    private Event(EventName name, EventDescription description, Instant scheduledAt) {
+    private Event(
+            EventName name,
+            EventDescription description,
+            Instant scheduledAt,
+            int numberOfRows
+    ) {
         this.name = requireName(name);
         this.description = description;
         this.scheduledAt = requireScheduledAt(scheduledAt);
+        this.numberOfRows = requireNumberOfRows(numberOfRows);
         this.status = EventStatus.DRAFT;
 
-        registerEvent(new EventCreated(id(), Instant.now()));
+        registerEvent(
+                new EventCreated(
+                        id(),
+                        Instant.now(),
+                        numberOfRows,
+                        SEATS_PER_ROW
+                )
+        );
     }
 
     /**
      * Creates a new event in DRAFT state.
-     * <p>
-     * A new EventCreated domain event is registered as part
-     * of aggregate creation.
      */
-    public static Event create(EventName name, EventDescription description, Instant scheduledAt) {
-        return new Event(name, description, scheduledAt);
+    public static Event create(
+            EventName name,
+            EventDescription description,
+            Instant scheduledAt,
+            int numberOfRows
+    ) {
+        return new Event(
+                name,
+                description,
+                scheduledAt,
+                numberOfRows
+        );
     }
 
     /**
      * Reconstitutes an event from its persisted state.
-     * <p>
-     * No domain event is registered during reconstitution because
-     * the event already exists and is being restored from persistence.
+     *
+     * No domain event is registered during reconstitution.
      */
-    public static Event reconstitute(UUID id, Long version, EventName name, EventDescription description, Instant scheduledAt, EventStatus status) {
-        Objects.requireNonNull(id, "Event id must not be null");
+    public static Event reconstitute(
+            UUID id,
+            Long version,
+            EventName name,
+            EventDescription description,
+            Instant scheduledAt,
+            int numberOfRows,
+            EventStatus status
+    ) {
+        Objects.requireNonNull(
+                id,
+                "Event id must not be null"
+        );
 
-        Objects.requireNonNull(version, "Event version must not be null");
+        Objects.requireNonNull(
+                version,
+                "Event version must not be null"
+        );
 
-        Objects.requireNonNull(name, "Event name must not be null");
+        Objects.requireNonNull(
+                name,
+                "Event name must not be null"
+        );
 
-        Objects.requireNonNull(scheduledAt, "Event scheduledAt must not be null");
+        Objects.requireNonNull(
+                scheduledAt,
+                "Event scheduledAt must not be null"
+        );
 
-        Objects.requireNonNull(status, "Event status must not be null");
+        Objects.requireNonNull(
+                status,
+                "Event status must not be null"
+        );
 
         Event event = new Event();
 
-        event.reconstituteIdentity(id, version);
+        event.reconstituteIdentity(
+                id,
+                version
+        );
 
         event.name = name;
         event.description = description;
         event.scheduledAt = scheduledAt;
+        event.numberOfRows = requireNumberOfRows(numberOfRows);
         event.status = status;
 
         return event;
@@ -87,13 +136,26 @@ public class Event extends AggregateRoot {
         return scheduledAt;
     }
 
+    public int numberOfRows() {
+        return numberOfRows;
+    }
+
+    /**
+     * Returns the total seating capacity for this event.
+     *
+     * Each row contains exactly {@link #SEATS_PER_ROW} seats.
+     */
+    public int capacity() {
+        return numberOfRows * SEATS_PER_ROW;
+    }
+
     public EventStatus status() {
         return status;
     }
 
     /**
      * Publishes the event.
-     * <p>
+     *
      * Only DRAFT events can be published.
      */
     public void publish() {
@@ -102,13 +164,18 @@ public class Event extends AggregateRoot {
 
         status = EventStatus.PUBLISHED;
 
-        registerEvent(new EventPublished(id(), Instant.now()));
+        registerEvent(
+                new EventPublished(
+                        id(),
+                        Instant.now()
+                )
+        );
     }
 
     /**
      * Cancels the event.
-     * <p>
-     * DRAFT and PUBLISHED events may be cancelled.
+     *
+     * DRAFT and PUBLISHED events may be canceled.
      */
     public void cancel() {
 
@@ -116,12 +183,17 @@ public class Event extends AggregateRoot {
 
         status = EventStatus.CANCELLED;
 
-        registerEvent(new EventCancelled(id(), Instant.now()));
+        registerEvent(
+                new EventCancelled(
+                        id(),
+                        Instant.now()
+                )
+        );
     }
 
     /**
      * Marks the event as completed.
-     * <p>
+     *
      * Only PUBLISHED events can be completed.
      */
     public void complete() {
@@ -130,56 +202,102 @@ public class Event extends AggregateRoot {
 
         status = EventStatus.COMPLETED;
 
-        registerEvent(new EventCompleted(id(), Instant.now()));
+        registerEvent(
+                new EventCompleted(
+                        id(),
+                        Instant.now()
+                )
+        );
     }
 
     /**
-     * Updates the event details.
-     * <p>
-     * CANCELLED and COMPLETED events cannot be modified.
+     * Updates the event details while it is still in DRAFT state.
+     *
+     * The seating configuration may be changed only before publication.
+     * Once published, the reservation service may already own the
+     * corresponding seat inventory.
      */
-    public void updateDetails(EventName name, EventDescription description, Instant scheduledAt) {
-
+    public void updateDetails(
+            EventName name,
+            EventDescription description,
+            Instant scheduledAt,
+            int numberOfRows
+    ) {
         ensureModifiable();
 
         this.name = requireName(name);
         this.description = description;
         this.scheduledAt = requireScheduledAt(scheduledAt);
-    }
-
-    private void ensureCancellable() {
-
-        if (status != EventStatus.DRAFT && status != EventStatus.PUBLISHED) {
-
-            throw new InvalidEventStateException("Event in " + status + " state cannot be cancelled");
-        }
+        this.numberOfRows = requireNumberOfRows(numberOfRows);
     }
 
     private void ensureModifiable() {
 
-        if (status == EventStatus.CANCELLED ||
-                status == EventStatus.COMPLETED) {
+        if (status != EventStatus.DRAFT) {
 
             throw new InvalidEventStateException(
-                    "Event in " + status + " state cannot be modified"
+                    "Event in " + status +
+                            " state cannot be modified"
             );
         }
     }
 
-    private void ensureStatus(EventStatus expectedStatus) {
+    private void ensureCancellable() {
 
-        if (status != expectedStatus) {
-            throw new InvalidEventStateException("Event must be in " + expectedStatus + " state but is currently " + status);
+        if (status != EventStatus.DRAFT &&
+                status != EventStatus.PUBLISHED) {
+
+            throw new InvalidEventStateException(
+                    "Event in " + status +
+                            " state cannot be cancelled"
+            );
         }
     }
 
-    private static EventName requireName(EventName name) {
+    private void ensureStatus(
+            EventStatus expectedStatus
+    ) {
 
-        return Objects.requireNonNull(name, "Event name must not be null");
+        if (status != expectedStatus) {
+
+            throw new InvalidEventStateException(
+                    "Event must be in " + expectedStatus +
+                            " state but is currently " + status
+            );
+        }
     }
 
-    private static Instant requireScheduledAt(Instant scheduledAt) {
+    private static EventName requireName(
+            EventName name
+    ) {
 
-        return Objects.requireNonNull(scheduledAt, "Event scheduledAt must not be null");
+        return Objects.requireNonNull(
+                name,
+                "Event name must not be null"
+        );
+    }
+
+    private static Instant requireScheduledAt(
+            Instant scheduledAt
+    ) {
+
+        return Objects.requireNonNull(
+                scheduledAt,
+                "Event scheduledAt must not be null"
+        );
+    }
+
+    private static int requireNumberOfRows(
+            int numberOfRows
+    ) {
+
+        if (numberOfRows <= 0) {
+
+            throw new IllegalArgumentException(
+                    "Event number of rows must be greater than zero"
+            );
+        }
+
+        return numberOfRows;
     }
 }

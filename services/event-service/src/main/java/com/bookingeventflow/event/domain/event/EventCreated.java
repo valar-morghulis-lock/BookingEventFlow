@@ -8,17 +8,23 @@ import java.util.UUID;
 public record EventCreated(
         UUID eventId,
         UUID aggregateId,
-        Instant occurredAt
+        Instant occurredAt,
+        int numberOfRows,
+        int seatsPerRow
 ) implements DomainEvent {
 
     public EventCreated(
             UUID aggregateId,
-            Instant occurredAt
+            Instant occurredAt,
+            int numberOfRows,
+            int seatsPerRow
     ) {
         this(
                 UUID.randomUUID(),
                 aggregateId,
-                occurredAt
+                occurredAt,
+                numberOfRows,
+                seatsPerRow
         );
     }
 }

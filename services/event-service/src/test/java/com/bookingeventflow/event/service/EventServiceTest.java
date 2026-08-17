@@ -44,9 +44,7 @@ import static org.mockito.Mockito.when;
 /**
  * Metrics are exercised through a real {@link SimpleMeterRegistry} rather
  * than mocked, so assertions target the actual metric identity (name +
- * tags) that ships to production. This also removes the shared-mock-
- * counter trap where two different metrics stubbed to the same mock
- * Counter caused false "too many invocations" failures.
+ * tags) that ships to production.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("EventService")
@@ -54,6 +52,8 @@ class EventServiceTest {
 
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_PAGE_SIZE = 100;
+
+    private static final int DEFAULT_NUMBER_OF_ROWS = 50;
 
     private static final Instant SCHEDULED_AT =
             Instant.parse("2026-12-20T19:00:00Z");
@@ -103,24 +103,32 @@ class EventServiceTest {
 
     @BeforeEach
     void setUp() {
-        meterRegistry = new SimpleMeterRegistry();
-        eventMetrics = new EventMetrics(meterRegistry);
 
-        eventService = new EventService(
-                eventRepository,
-                eventMapper,
-                cursorCodec,
-                eventMetrics
-        );
+        meterRegistry =
+                new SimpleMeterRegistry();
 
-        eventEntity = event(
-                EVENT_NAME,
-                EVENT_DESCRIPTION,
-                SCHEDULED_AT,
-                EventStatus.DRAFT
-        );
+        eventMetrics =
+                new EventMetrics(meterRegistry);
 
-        eventResponse = response(eventEntity);
+        eventService =
+                new EventService(
+                        eventRepository,
+                        eventMapper,
+                        cursorCodec,
+                        eventMetrics
+                );
+
+        eventEntity =
+                event(
+                        EVENT_NAME,
+                        EVENT_DESCRIPTION,
+                        SCHEDULED_AT,
+                        DEFAULT_NUMBER_OF_ROWS,
+                        EventStatus.DRAFT
+                );
+
+        eventResponse =
+                response(eventEntity);
     }
 
     // =====================================================================
@@ -139,7 +147,8 @@ class EventServiceTest {
                     createRequest(
                             EVENT_NAME,
                             EVENT_DESCRIPTION,
-                            SCHEDULED_AT
+                            SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS
                     );
 
             EventEntity newEntity =
@@ -147,6 +156,7 @@ class EventServiceTest {
                             EVENT_NAME,
                             EVENT_DESCRIPTION,
                             SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
@@ -155,25 +165,38 @@ class EventServiceTest {
                             EVENT_NAME,
                             EVENT_DESCRIPTION,
                             SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
             EventResponse savedResponse =
                     response(savedEntity);
 
-            when(eventMapper.toNewEntity(any(Event.class)))
-                    .thenReturn(newEntity);
+            when(
+                    eventMapper.toNewEntity(
+                            any(Event.class)
+                    )
+            ).thenReturn(newEntity);
 
-            when(eventRepository.saveAndFlush(newEntity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            newEntity
+                    )
+            ).thenReturn(savedEntity);
 
-            when(eventMapper.toResponse(savedEntity))
-                    .thenReturn(savedResponse);
+            when(
+                    eventMapper.toResponse(
+                            savedEntity
+                    )
+            ).thenReturn(savedResponse);
 
             EventResponse result =
                     eventService.create(request);
 
-            assertEquals(savedResponse, result);
+            assertEquals(
+                    savedResponse,
+                    result
+            );
 
             verify(eventMapper)
                     .toNewEntity(any(Event.class));
@@ -184,7 +207,11 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(savedEntity);
 
-            assertOperationCount("create", "success", 1.0);
+            assertOperationCount(
+                    "create",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
@@ -195,7 +222,8 @@ class EventServiceTest {
                     createRequest(
                             "New Event",
                             "Description",
-                            SCHEDULED_AT
+                            SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS
                     );
 
             EventEntity newEntity =
@@ -203,25 +231,41 @@ class EventServiceTest {
                             "New Event",
                             "Description",
                             SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
-            when(eventMapper.toNewEntity(any(Event.class)))
-                    .thenReturn(newEntity);
+            when(
+                    eventMapper.toNewEntity(
+                            any(Event.class)
+                    )
+            ).thenReturn(newEntity);
 
-            when(eventRepository.saveAndFlush(newEntity))
-                    .thenReturn(newEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            newEntity
+                    )
+            ).thenReturn(newEntity);
 
-            when(eventMapper.toResponse(newEntity))
-                    .thenReturn(response(newEntity));
+            when(
+                    eventMapper.toResponse(
+                            newEntity
+                    )
+            ).thenReturn(
+                    response(newEntity)
+            );
 
             eventService.create(request);
 
             ArgumentCaptor<EventEntity> captor =
-                    ArgumentCaptor.forClass(EventEntity.class);
+                    ArgumentCaptor.forClass(
+                            EventEntity.class
+                    );
 
             verify(eventRepository)
-                    .saveAndFlush(captor.capture());
+                    .saveAndFlush(
+                            captor.capture()
+                    );
 
             assertEquals(
                     newEntity,
@@ -244,11 +288,16 @@ class EventServiceTest {
 
             givenEventExists();
 
-            when(eventMapper.toResponse(eventEntity))
-                    .thenReturn(eventResponse);
+            when(
+                    eventMapper.toResponse(
+                            eventEntity
+                    )
+            ).thenReturn(eventResponse);
 
             EventResponse result =
-                    eventService.getById(eventEntity.id());
+                    eventService.getById(
+                            eventEntity.id()
+                    );
 
             assertEquals(
                     eventResponse,
@@ -261,7 +310,11 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(eventEntity);
 
-            assertOperationCount("get", "success", 1.0);
+            assertOperationCount(
+                    "get",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
@@ -272,13 +325,19 @@ class EventServiceTest {
 
             assertThrows(
                     EventNotFoundException.class,
-                    () -> eventService.getById(eventEntity.id())
+                    () -> eventService.getById(
+                            eventEntity.id()
+                    )
             );
 
             verify(eventRepository)
                     .findById(eventEntity.id());
 
-            assertOperationCount("get", "not_found", 1.0);
+            assertOperationCount(
+                    "get",
+                    "not_found",
+                    1.0
+            );
 
             verifyNoInteractions(eventMapper);
         }
@@ -301,6 +360,7 @@ class EventServiceTest {
                             SECOND_EVENT_NAME,
                             SECOND_EVENT_DESCRIPTION,
                             SECOND_SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
@@ -344,10 +404,14 @@ class EventServiceTest {
                     result.items().get(1)
             );
 
-            assertNull(result.nextCursor());
+            assertNull(
+                    result.nextCursor()
+            );
 
             verify(eventRepository)
-                    .findFirstKeysetPage(any(Pageable.class));
+                    .findFirstKeysetPage(
+                            any(Pageable.class)
+                    );
 
             verify(eventMapper)
                     .toResponse(eventEntity);
@@ -355,9 +419,21 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(secondEntity);
 
-            assertOperationCount("list", "success", 1.0);
-            assertPaginationCount("cursor_used", 0.0);
-            assertPaginationCount("has_next", 0.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
+
+            assertPaginationCount(
+                    "cursor_used",
+                    0.0
+            );
+
+            assertPaginationCount(
+                    "has_next",
+                    0.0
+            );
 
             verifyNoInteractions(cursorCodec);
         }
@@ -366,7 +442,8 @@ class EventServiceTest {
         @DisplayName("should return first page filtered by status")
         void shouldReturnFirstPageFilteredByStatus() {
 
-            EventStatus status = EventStatus.DRAFT;
+            EventStatus status =
+                    EventStatus.DRAFT;
 
             givenFirstPageByStatus(
                     status,
@@ -395,7 +472,9 @@ class EventServiceTest {
                     result.items().get(0)
             );
 
-            assertNull(result.nextCursor());
+            assertNull(
+                    result.nextCursor()
+            );
 
             verify(eventRepository)
                     .findFirstKeysetPageByStatus(
@@ -406,7 +485,11 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(eventEntity);
 
-            assertOperationCount("list", "success", 1.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
 
             verifyNoInteractions(cursorCodec);
         }
@@ -424,13 +507,24 @@ class EventServiceTest {
                             null
                     );
 
-            assertTrue(result.items().isEmpty());
-            assertNull(result.nextCursor());
+            assertTrue(
+                    result.items().isEmpty()
+            );
+
+            assertNull(
+                    result.nextCursor()
+            );
 
             verify(eventRepository)
-                    .findFirstKeysetPage(any(Pageable.class));
+                    .findFirstKeysetPage(
+                            any(Pageable.class)
+                    );
 
-            assertOperationCount("list", "success", 1.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
 
             verifyNoInteractions(
                     eventMapper,
@@ -449,6 +543,7 @@ class EventServiceTest {
                             SECOND_EVENT_NAME,
                             SECOND_EVENT_DESCRIPTION,
                             SECOND_SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
@@ -457,10 +552,12 @@ class EventServiceTest {
                             THIRD_EVENT_NAME,
                             THIRD_EVENT_DESCRIPTION,
                             THIRD_SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
-            String nextCursor = "encoded-cursor";
+            String nextCursor =
+                    "encoded-cursor";
 
             givenFirstPage(
                     eventEntity,
@@ -478,8 +575,11 @@ class EventServiceTest {
                     response(secondEntity)
             );
 
-            when(cursorCodec.encode(any(EventCursor.class)))
-                    .thenReturn(nextCursor);
+            when(
+                    cursorCodec.encode(
+                            any(EventCursor.class)
+                    )
+            ).thenReturn(nextCursor);
 
             EventPageResponse result =
                     eventService.getAll(
@@ -504,7 +604,9 @@ class EventServiceTest {
             );
 
             ArgumentCaptor<Pageable> pageableCaptor =
-                    ArgumentCaptor.forClass(Pageable.class);
+                    ArgumentCaptor.forClass(
+                            Pageable.class
+                    );
 
             verify(eventRepository)
                     .findFirstKeysetPage(
@@ -513,14 +615,19 @@ class EventServiceTest {
 
             assertEquals(
                     limit + 1,
-                    pageableCaptor.getValue().getPageSize()
+                    pageableCaptor.getValue()
+                            .getPageSize()
             );
 
             ArgumentCaptor<EventCursor> cursorCaptor =
-                    ArgumentCaptor.forClass(EventCursor.class);
+                    ArgumentCaptor.forClass(
+                            EventCursor.class
+                    );
 
             verify(cursorCodec)
-                    .encode(cursorCaptor.capture());
+                    .encode(
+                            cursorCaptor.capture()
+                    );
 
             EventCursor encodedCursor =
                     cursorCaptor.getValue();
@@ -535,9 +642,21 @@ class EventServiceTest {
                     encodedCursor.eventId()
             );
 
-            assertOperationCount("list", "success", 1.0);
-            assertPaginationCount("has_next", 1.0);
-            assertPaginationCount("cursor_used", 0.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
+
+            assertPaginationCount(
+                    "has_next",
+                    1.0
+            );
+
+            assertPaginationCount(
+                    "cursor_used",
+                    0.0
+            );
         }
 
         @Test
@@ -545,7 +664,9 @@ class EventServiceTest {
         void shouldUseCursorWithoutStatusFilter() {
 
             int limit = 2;
-            String after = "encoded-cursor";
+
+            String after =
+                    "encoded-cursor";
 
             EventCursor decodedCursor =
                     new EventCursor(
@@ -558,11 +679,13 @@ class EventServiceTest {
                             SECOND_EVENT_NAME,
                             SECOND_EVENT_DESCRIPTION,
                             SECOND_SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
-            when(cursorCodec.decode(after))
-                    .thenReturn(decodedCursor);
+            when(
+                    cursorCodec.decode(after)
+            ).thenReturn(decodedCursor);
 
             when(
                     eventRepository.findNextKeysetPage(
@@ -591,7 +714,9 @@ class EventServiceTest {
                     result.items().size()
             );
 
-            assertNull(result.nextCursor());
+            assertNull(
+                    result.nextCursor()
+            );
 
             verify(cursorCodec)
                     .decode(after);
@@ -606,8 +731,16 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(secondEntity);
 
-            assertOperationCount("list", "success", 1.0);
-            assertPaginationCount("cursor_used", 1.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
+
+            assertPaginationCount(
+                    "cursor_used",
+                    1.0
+            );
 
             verify(
                     eventRepository,
@@ -625,8 +758,12 @@ class EventServiceTest {
         void shouldUseCursorWithStatusFilter() {
 
             int limit = 2;
-            EventStatus status = EventStatus.DRAFT;
-            String after = "encoded-cursor";
+
+            EventStatus status =
+                    EventStatus.DRAFT;
+
+            String after =
+                    "encoded-cursor";
 
             EventCursor decodedCursor =
                     new EventCursor(
@@ -639,11 +776,13 @@ class EventServiceTest {
                             SECOND_EVENT_NAME,
                             SECOND_EVENT_DESCRIPTION,
                             SECOND_SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.DRAFT
                     );
 
-            when(cursorCodec.decode(after))
-                    .thenReturn(decodedCursor);
+            when(
+                    cursorCodec.decode(after)
+            ).thenReturn(decodedCursor);
 
             when(
                     eventRepository.findNextKeysetPageByStatus(
@@ -673,7 +812,9 @@ class EventServiceTest {
                     result.items().size()
             );
 
-            assertNull(result.nextCursor());
+            assertNull(
+                    result.nextCursor()
+            );
 
             verify(cursorCodec)
                     .decode(after);
@@ -689,8 +830,16 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(secondEntity);
 
-            assertOperationCount("list", "success", 1.0);
-            assertPaginationCount("cursor_used", 1.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
+
+            assertPaginationCount(
+                    "cursor_used",
+                    1.0
+            );
 
             verify(
                     eventRepository,
@@ -706,7 +855,11 @@ class EventServiceTest {
         void shouldTreatBlankCursorAsFirstPage() {
 
             givenFirstPage(eventEntity);
-            givenResponse(eventEntity, eventResponse);
+
+            givenResponse(
+                    eventEntity,
+                    eventResponse
+            );
 
             EventPageResponse result =
                     eventService.getAll(
@@ -725,12 +878,19 @@ class EventServiceTest {
                     result.items().get(0)
             );
 
-            assertNull(result.nextCursor());
+            assertNull(
+                    result.nextCursor()
+            );
 
             verify(eventRepository)
-                    .findFirstKeysetPage(any(Pageable.class));
+                    .findFirstKeysetPage(
+                            any(Pageable.class)
+                    );
 
-            assertPaginationCount("cursor_used", 0.0);
+            assertPaginationCount(
+                    "cursor_used",
+                    0.0
+            );
 
             verifyNoInteractions(cursorCodec);
         }
@@ -754,7 +914,9 @@ class EventServiceTest {
                     cursorCodec
             );
 
-            assertTrue(meterRegistry.getMeters().isEmpty());
+            assertTrue(
+                    meterRegistry.getMeters().isEmpty()
+            );
         }
 
         @Test
@@ -776,7 +938,9 @@ class EventServiceTest {
                     cursorCodec
             );
 
-            assertTrue(meterRegistry.getMeters().isEmpty());
+            assertTrue(
+                    meterRegistry.getMeters().isEmpty()
+            );
         }
 
         @Test
@@ -792,12 +956,20 @@ class EventServiceTest {
                             null
                     );
 
-            assertTrue(result.items().isEmpty());
+            assertTrue(
+                    result.items().isEmpty()
+            );
 
             verify(eventRepository)
-                    .findFirstKeysetPage(any(Pageable.class));
+                    .findFirstKeysetPage(
+                            any(Pageable.class)
+                    );
 
-            assertOperationCount("list", "success", 1.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
@@ -813,27 +985,39 @@ class EventServiceTest {
                             null
                     );
 
-            assertTrue(result.items().isEmpty());
+            assertTrue(
+                    result.items().isEmpty()
+            );
 
             verify(eventRepository)
-                    .findFirstKeysetPage(any(Pageable.class));
+                    .findFirstKeysetPage(
+                            any(Pageable.class)
+                    );
 
-            assertOperationCount("list", "success", 1.0);
+            assertOperationCount(
+                    "list",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
         @DisplayName("should propagate cursor decoding failure")
         void shouldPropagateCursorDecodingFailure() {
 
-            String invalidCursor = "invalid-cursor";
+            String invalidCursor =
+                    "invalid-cursor";
 
             IllegalArgumentException decodingException =
                     new IllegalArgumentException(
                             "Invalid cursor"
                     );
 
-            when(cursorCodec.decode(invalidCursor))
-                    .thenThrow(decodingException);
+            when(
+                    cursorCodec.decode(
+                            invalidCursor
+                    )
+            ).thenThrow(decodingException);
 
             IllegalArgumentException thrown =
                     assertThrows(
@@ -858,7 +1042,9 @@ class EventServiceTest {
                     eventMapper
             );
 
-            assertTrue(meterRegistry.getMeters().isEmpty());
+            assertTrue(
+                    meterRegistry.getMeters().isEmpty()
+            );
         }
     }
 
@@ -879,11 +1065,15 @@ class EventServiceTest {
                             "2026-12-21T19:00:00Z"
                     );
 
+            int updatedNumberOfRows =
+                    DEFAULT_NUMBER_OF_ROWS + 10;
+
             UpdateEventRequest request =
                     updateRequest(
                             "Rock Concert Updated",
                             "Updated description",
-                            updatedScheduledAt
+                            updatedScheduledAt,
+                            updatedNumberOfRows
                     );
 
             EventEntity savedEntity =
@@ -891,6 +1081,7 @@ class EventServiceTest {
                             "Rock Concert Updated",
                             "Updated description",
                             updatedScheduledAt,
+                            updatedNumberOfRows,
                             EventStatus.DRAFT
                     );
 
@@ -900,11 +1091,17 @@ class EventServiceTest {
             givenEventExists();
             givenDomainEvent();
 
-            when(eventRepository.saveAndFlush(eventEntity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
-            when(eventMapper.toResponse(savedEntity))
-                    .thenReturn(updatedResponse);
+            when(
+                    eventMapper.toResponse(
+                            savedEntity
+                    )
+            ).thenReturn(updatedResponse);
 
             EventResponse result =
                     eventService.update(
@@ -927,7 +1124,8 @@ class EventServiceTest {
                     .updateDetails(
                             any(),
                             any(),
-                            eq(updatedScheduledAt)
+                            eq(updatedScheduledAt),
+                            eq(updatedNumberOfRows)
                     );
 
             verify(eventMapper)
@@ -942,7 +1140,11 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(savedEntity);
 
-            assertOperationCount("update", "success", 1.0);
+            assertOperationCount(
+                    "update",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
@@ -953,7 +1155,8 @@ class EventServiceTest {
                     updateRequest(
                             "Updated",
                             "Updated description",
-                            SCHEDULED_AT
+                            SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS
                     );
 
             givenEventDoesNotExist();
@@ -969,7 +1172,11 @@ class EventServiceTest {
             verify(eventRepository)
                     .findById(eventEntity.id());
 
-            assertOperationCount("update", "not_found", 1.0);
+            assertOperationCount(
+                    "update",
+                    "not_found",
+                    1.0
+            );
 
             verifyNoInteractions(eventMapper);
 
@@ -997,6 +1204,7 @@ class EventServiceTest {
                             EVENT_NAME,
                             EVENT_DESCRIPTION,
                             SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.PUBLISHED
                     );
 
@@ -1006,14 +1214,22 @@ class EventServiceTest {
             givenEventExists();
             givenDomainEvent();
 
-            when(eventRepository.saveAndFlush(eventEntity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
-            when(eventMapper.toResponse(savedEntity))
-                    .thenReturn(publishedResponse);
+            when(
+                    eventMapper.toResponse(
+                            savedEntity
+                    )
+            ).thenReturn(publishedResponse);
 
             EventResponse result =
-                    eventService.publish(eventEntity.id());
+                    eventService.publish(
+                            eventEntity.id()
+                    );
 
             assertEquals(
                     publishedResponse,
@@ -1041,7 +1257,11 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(savedEntity);
 
-            assertOperationCount("publish", "success", 1.0);
+            assertOperationCount(
+                    "publish",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
@@ -1060,7 +1280,11 @@ class EventServiceTest {
             verify(eventRepository)
                     .findById(eventEntity.id());
 
-            assertOperationCount("publish", "not_found", 1.0);
+            assertOperationCount(
+                    "publish",
+                    "not_found",
+                    1.0
+            );
 
             verifyNoInteractions(eventMapper);
 
@@ -1104,7 +1328,9 @@ class EventServiceTest {
                     never()
             ).saveAndFlush(any());
 
-            assertTrue(meterRegistry.getMeters().isEmpty());
+            assertTrue(
+                    meterRegistry.getMeters().isEmpty()
+            );
         }
     }
 
@@ -1125,6 +1351,7 @@ class EventServiceTest {
                             EVENT_NAME,
                             EVENT_DESCRIPTION,
                             SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.CANCELLED
                     );
 
@@ -1134,14 +1361,22 @@ class EventServiceTest {
             givenEventExists();
             givenDomainEvent();
 
-            when(eventRepository.saveAndFlush(eventEntity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
-            when(eventMapper.toResponse(savedEntity))
-                    .thenReturn(cancelledResponse);
+            when(
+                    eventMapper.toResponse(
+                            savedEntity
+                    )
+            ).thenReturn(cancelledResponse);
 
             EventResponse result =
-                    eventService.cancel(eventEntity.id());
+                    eventService.cancel(
+                            eventEntity.id()
+                    );
 
             assertEquals(
                     cancelledResponse,
@@ -1169,7 +1404,11 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(savedEntity);
 
-            assertOperationCount("cancel", "success", 1.0);
+            assertOperationCount(
+                    "cancel",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
@@ -1180,13 +1419,19 @@ class EventServiceTest {
 
             assertThrows(
                     EventNotFoundException.class,
-                    () -> eventService.cancel(eventEntity.id())
+                    () -> eventService.cancel(
+                            eventEntity.id()
+                    )
             );
 
             verify(eventRepository)
                     .findById(eventEntity.id());
 
-            assertOperationCount("cancel", "not_found", 1.0);
+            assertOperationCount(
+                    "cancel",
+                    "not_found",
+                    1.0
+            );
 
             verifyNoInteractions(eventMapper);
 
@@ -1230,7 +1475,9 @@ class EventServiceTest {
                     never()
             ).saveAndFlush(any());
 
-            assertTrue(meterRegistry.getMeters().isEmpty());
+            assertTrue(
+                    meterRegistry.getMeters().isEmpty()
+            );
         }
     }
 
@@ -1251,6 +1498,7 @@ class EventServiceTest {
                             EVENT_NAME,
                             EVENT_DESCRIPTION,
                             SCHEDULED_AT,
+                            DEFAULT_NUMBER_OF_ROWS,
                             EventStatus.COMPLETED
                     );
 
@@ -1260,11 +1508,17 @@ class EventServiceTest {
             givenEventExists();
             givenDomainEvent();
 
-            when(eventRepository.saveAndFlush(eventEntity))
-                    .thenReturn(savedEntity);
+            when(
+                    eventRepository.saveAndFlush(
+                            eventEntity
+                    )
+            ).thenReturn(savedEntity);
 
-            when(eventMapper.toResponse(savedEntity))
-                    .thenReturn(completedResponse);
+            when(
+                    eventMapper.toResponse(
+                            savedEntity
+                    )
+            ).thenReturn(completedResponse);
 
             EventResponse result =
                     eventService.complete(
@@ -1297,7 +1551,11 @@ class EventServiceTest {
             verify(eventMapper)
                     .toResponse(savedEntity);
 
-            assertOperationCount("complete", "success", 1.0);
+            assertOperationCount(
+                    "complete",
+                    "success",
+                    1.0
+            );
         }
 
         @Test
@@ -1316,7 +1574,11 @@ class EventServiceTest {
             verify(eventRepository)
                     .findById(eventEntity.id());
 
-            assertOperationCount("complete", "not_found", 1.0);
+            assertOperationCount(
+                    "complete",
+                    "not_found",
+                    1.0
+            );
 
             verifyNoInteractions(eventMapper);
 
@@ -1360,7 +1622,9 @@ class EventServiceTest {
                     never()
             ).saveAndFlush(any());
 
-            assertTrue(meterRegistry.getMeters().isEmpty());
+            assertTrue(
+                    meterRegistry.getMeters().isEmpty()
+            );
         }
     }
 
@@ -1378,7 +1642,9 @@ class EventServiceTest {
 
             givenEventExists();
 
-            eventService.delete(eventEntity.id());
+            eventService.delete(
+                    eventEntity.id()
+            );
 
             verify(eventRepository)
                     .findById(eventEntity.id());
@@ -1386,7 +1652,11 @@ class EventServiceTest {
             verify(eventRepository)
                     .delete(eventEntity);
 
-            assertOperationCount("delete", "success", 1.0);
+            assertOperationCount(
+                    "delete",
+                    "success",
+                    1.0
+            );
 
             verifyNoInteractions(eventMapper);
         }
@@ -1399,13 +1669,19 @@ class EventServiceTest {
 
             assertThrows(
                     EventNotFoundException.class,
-                    () -> eventService.delete(eventEntity.id())
+                    () -> eventService.delete(
+                            eventEntity.id()
+                    )
             );
 
             verify(eventRepository)
                     .findById(eventEntity.id());
 
-            assertOperationCount("delete", "not_found", 1.0);
+            assertOperationCount(
+                    "delete",
+                    "not_found",
+                    1.0
+            );
 
             verify(
                     eventRepository,
@@ -1424,23 +1700,28 @@ class EventServiceTest {
             String name,
             String description,
             Instant scheduledAt,
+            int numberOfRows,
             EventStatus status
     ) {
         return new EventEntity(
                 name,
                 description,
                 scheduledAt,
+                numberOfRows,
                 status
         );
     }
 
-    private EventResponse response(EventEntity entity) {
+    private EventResponse response(
+            EventEntity entity
+    ) {
         return new EventResponse(
                 entity.id(),
                 entity.version(),
                 entity.getName(),
                 entity.getDescription(),
                 entity.getScheduledAt(),
+                entity.getNumberOfRows(),
                 entity.getStatus()
         );
     }
@@ -1448,24 +1729,28 @@ class EventServiceTest {
     private CreateEventRequest createRequest(
             String name,
             String description,
-            Instant scheduledAt
+            Instant scheduledAt,
+            int numberOfRows
     ) {
         return new CreateEventRequest(
                 name,
                 description,
-                scheduledAt
+                scheduledAt,
+                numberOfRows
         );
     }
 
     private UpdateEventRequest updateRequest(
             String name,
             String description,
-            Instant scheduledAt
+            Instant scheduledAt,
+            int numberOfRows
     ) {
         return new UpdateEventRequest(
                 name,
                 description,
-                scheduledAt
+                scheduledAt,
+                numberOfRows
         );
     }
 
@@ -1474,18 +1759,37 @@ class EventServiceTest {
     // =====================================================================
 
     private void givenEventExists() {
-        when(eventRepository.findById(eventEntity.id()))
-                .thenReturn(Optional.of(eventEntity));
+
+        when(
+                eventRepository.findById(
+                        eventEntity.id()
+                )
+        ).thenReturn(
+                Optional.of(eventEntity)
+        );
     }
 
     private void givenEventDoesNotExist() {
-        when(eventRepository.findById(eventEntity.id()))
-                .thenReturn(Optional.empty());
+
+        when(
+                eventRepository.findById(
+                        eventEntity.id()
+                )
+        ).thenReturn(
+                Optional.empty()
+        );
     }
 
-    private void givenFirstPage(EventEntity... entities) {
-        when(eventRepository.findFirstKeysetPage(any(Pageable.class)))
-                .thenReturn(List.of(entities));
+    private void givenFirstPage(
+            EventEntity... entities
+    ) {
+        when(
+                eventRepository.findFirstKeysetPage(
+                        any(Pageable.class)
+                )
+        ).thenReturn(
+                List.of(entities)
+        );
     }
 
     private void givenFirstPageByStatus(
@@ -1497,20 +1801,27 @@ class EventServiceTest {
                         eq(status),
                         any(Pageable.class)
                 )
-        ).thenReturn(List.of(entities));
+        ).thenReturn(
+                List.of(entities)
+        );
     }
 
     private void givenResponse(
             EventEntity entity,
             EventResponse response
     ) {
-        when(eventMapper.toResponse(entity))
-                .thenReturn(response);
+        when(
+                eventMapper.toResponse(entity)
+        ).thenReturn(response);
     }
 
     private void givenDomainEvent() {
-        when(eventMapper.toDomain(eventEntity))
-                .thenReturn(domainEvent);
+
+        when(
+                eventMapper.toDomain(
+                        eventEntity
+                )
+        ).thenReturn(domainEvent);
     }
 
     // =====================================================================
@@ -1525,7 +1836,12 @@ class EventServiceTest {
         assertEquals(
                 expectedCount,
                 meterRegistry.get("events.operations")
-                        .tags("operation", operation, "result", result)
+                        .tags(
+                                "operation",
+                                operation,
+                                "result",
+                                result
+                        )
                         .counter()
                         .count()
         );
@@ -1535,12 +1851,17 @@ class EventServiceTest {
             String type,
             double expectedCount
     ) {
+
         if (expectedCount == 0.0) {
-            // Meter is only registered once incremented at least once;
-            // absence of the meter is equivalent to a zero count.
-            boolean meterExists = meterRegistry.find("events.pagination")
-                    .tags("type", type)
-                    .counter() != null;
+
+            boolean meterExists =
+                    meterRegistry
+                            .find("events.pagination")
+                            .tags(
+                                    "type",
+                                    type
+                            )
+                            .counter() != null;
 
             if (!meterExists) {
                 return;
@@ -1549,8 +1870,12 @@ class EventServiceTest {
 
         assertEquals(
                 expectedCount,
-                meterRegistry.get("events.pagination")
-                        .tags("type", type)
+                meterRegistry
+                        .get("events.pagination")
+                        .tags(
+                                "type",
+                                type
+                        )
                         .counter()
                         .count()
         );

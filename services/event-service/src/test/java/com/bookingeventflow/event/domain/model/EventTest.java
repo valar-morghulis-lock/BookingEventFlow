@@ -38,6 +38,10 @@ class EventTest {
     private static final Instant SCHEDULED_AT =
             Instant.parse("2026-12-01T10:00:00Z");
 
+    private static final int NUMBER_OF_ROWS = 50;
+
+    private static final int UPDATED_NUMBER_OF_ROWS = 60;
+
     // =====================================================================
     // CREATION
     // =====================================================================
@@ -53,10 +57,38 @@ class EventTest {
             Event event = createEvent();
 
             assertNotNull(event.id());
-            assertEquals(EventStatus.DRAFT, event.status());
-            assertEquals(EVENT_NAME, event.name());
-            assertEquals(EVENT_DESCRIPTION, event.description());
-            assertEquals(SCHEDULED_AT, event.scheduledAt());
+            assertEquals(
+                    EventStatus.DRAFT,
+                    event.status()
+            );
+            assertEquals(
+                    EVENT_NAME,
+                    event.name()
+            );
+            assertEquals(
+                    EVENT_DESCRIPTION,
+                    event.description()
+            );
+            assertEquals(
+                    SCHEDULED_AT,
+                    event.scheduledAt()
+            );
+            assertEquals(
+                    NUMBER_OF_ROWS,
+                    event.numberOfRows()
+            );
+        }
+
+        @Test
+        @DisplayName("Should calculate seating capacity from number of rows")
+        void shouldCalculateSeatingCapacity() {
+
+            Event event = createEvent();
+
+            assertEquals(
+                    NUMBER_OF_ROWS * Event.SEATS_PER_ROW,
+                    event.capacity()
+            );
         }
 
         @Test
@@ -65,7 +97,10 @@ class EventTest {
 
             Event event = createEvent();
 
-            assertEquals(1, event.domainEvents().size());
+            assertEquals(
+                    1,
+                    event.domainEvents().size()
+            );
 
             EventCreated created =
                     assertInstanceOf(
@@ -78,6 +113,16 @@ class EventTest {
                     created.aggregateId(),
                     created.occurredAt(),
                     event.id()
+            );
+
+            assertEquals(
+                    NUMBER_OF_ROWS,
+                    created.numberOfRows()
+            );
+
+            assertEquals(
+                    Event.SEATS_PER_ROW,
+                    created.seatsPerRow()
             );
         }
     }
@@ -419,8 +464,8 @@ class EventTest {
     class UpdateTests {
 
         @Test
-        @DisplayName("Should update draft event")
-        void shouldUpdateDraftEvent() {
+        @DisplayName("Should update draft event details")
+        void shouldUpdateDraftEventDetails() {
 
             Event event = createEvent();
 
@@ -433,12 +478,15 @@ class EventTest {
                     );
 
             Instant updatedScheduledAt =
-                    Instant.parse("2026-12-02T10:00:00Z");
+                    Instant.parse(
+                            "2026-12-02T10:00:00Z"
+                    );
 
             event.updateDetails(
                     updatedName,
                     updatedDescription,
-                    updatedScheduledAt
+                    updatedScheduledAt,
+                    UPDATED_NUMBER_OF_ROWS
             );
 
             assertEquals(
@@ -454,6 +502,16 @@ class EventTest {
             assertEquals(
                     updatedScheduledAt,
                     event.scheduledAt()
+            );
+
+            assertEquals(
+                    UPDATED_NUMBER_OF_ROWS,
+                    event.numberOfRows()
+            );
+
+            assertEquals(
+                    UPDATED_NUMBER_OF_ROWS * Event.SEATS_PER_ROW,
+                    event.capacity()
             );
 
             assertEquals(
@@ -463,43 +521,78 @@ class EventTest {
         }
 
         @Test
-        @DisplayName("Should update published event")
-        void shouldUpdatePublishedEvent() {
+        @DisplayName("Should preserve event status when updating draft event")
+        void shouldPreserveDraftStatusWhenUpdatingEvent() {
+
+            Event event = createEvent();
+
+            event.updateDetails(
+                    EventName.of("Updated Conference"),
+                    EventDescription.of("Updated description."),
+                    Instant.parse(
+                            "2026-12-02T10:00:00Z"
+                    ),
+                    UPDATED_NUMBER_OF_ROWS
+            );
+
+            assertEquals(
+                    EventStatus.DRAFT,
+                    event.status()
+            );
+        }
+
+        @Test
+        @DisplayName("Should reject updating published event")
+        void shouldRejectUpdatingPublishedEvent() {
 
             Event event = createEvent();
 
             event.publish();
 
-            EventName updatedName =
-                    EventName.of("Updated Conference");
+            EventName originalName =
+                    event.name();
 
-            EventDescription updatedDescription =
-                    EventDescription.of(
-                            "Updated description."
-                    );
+            EventDescription originalDescription =
+                    event.description();
 
-            Instant updatedScheduledAt =
-                    Instant.parse("2026-12-02T10:00:00Z");
+            Instant originalScheduledAt =
+                    event.scheduledAt();
 
-            event.updateDetails(
-                    updatedName,
-                    updatedDescription,
-                    updatedScheduledAt
+            int originalNumberOfRows =
+                    event.numberOfRows();
+
+            assertThrows(
+                    InvalidEventStateException.class,
+                    () -> event.updateDetails(
+                            EventName.of("Updated Conference"),
+                            EventDescription.of(
+                                    "Updated description."
+                            ),
+                            Instant.parse(
+                                    "2026-12-02T10:00:00Z"
+                            ),
+                            UPDATED_NUMBER_OF_ROWS
+                    )
             );
 
             assertEquals(
-                    updatedName,
+                    originalName,
                     event.name()
             );
 
             assertEquals(
-                    updatedDescription,
+                    originalDescription,
                     event.description()
             );
 
             assertEquals(
-                    updatedScheduledAt,
+                    originalScheduledAt,
                     event.scheduledAt()
+            );
+
+            assertEquals(
+                    originalNumberOfRows,
+                    event.numberOfRows()
             );
 
             assertEquals(
@@ -521,7 +614,8 @@ class EventTest {
                     () -> event.updateDetails(
                             EventName.of("Updated"),
                             EVENT_DESCRIPTION,
-                            SCHEDULED_AT
+                            SCHEDULED_AT,
+                            UPDATED_NUMBER_OF_ROWS
                     )
             );
         }
@@ -540,8 +634,63 @@ class EventTest {
                     () -> event.updateDetails(
                             EventName.of("Updated"),
                             EVENT_DESCRIPTION,
-                            SCHEDULED_AT
+                            SCHEDULED_AT,
+                            UPDATED_NUMBER_OF_ROWS
                     )
+            );
+        }
+
+        @Test
+        @DisplayName("Should reject zero number of rows")
+        void shouldRejectZeroNumberOfRows() {
+
+            Event event = createEvent();
+
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> event.updateDetails(
+                            EventName.of("Updated"),
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT,
+                            0
+                    )
+            );
+
+            assertEquals(
+                    NUMBER_OF_ROWS,
+                    event.numberOfRows()
+            );
+
+            assertEquals(
+                    EventStatus.DRAFT,
+                    event.status()
+            );
+        }
+
+        @Test
+        @DisplayName("Should reject negative number of rows")
+        void shouldRejectNegativeNumberOfRows() {
+
+            Event event = createEvent();
+
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> event.updateDetails(
+                            EventName.of("Updated"),
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT,
+                            -1
+                    )
+            );
+
+            assertEquals(
+                    NUMBER_OF_ROWS,
+                    event.numberOfRows()
+            );
+
+            assertEquals(
+                    EventStatus.DRAFT,
+                    event.status()
             );
         }
     }
@@ -603,8 +752,13 @@ class EventTest {
                             event.domainEvents().get(1)
                     );
 
-            assertNotNull(created.eventId());
-            assertNotNull(published.eventId());
+            assertNotNull(
+                    created.eventId()
+            );
+
+            assertNotNull(
+                    published.eventId()
+            );
 
             assertNotEquals(
                     created.eventId(),
@@ -631,17 +785,111 @@ class EventTest {
 
             assertEquals(
                     event.id(),
-                    ((EventCreated) events.get(0)).aggregateId()
+                    ((EventCreated) events.get(0))
+                            .aggregateId()
             );
 
             assertEquals(
                     event.id(),
-                    ((EventPublished) events.get(1)).aggregateId()
+                    ((EventPublished) events.get(1))
+                            .aggregateId()
             );
 
             assertEquals(
                     event.id(),
-                    ((EventCancelled) events.get(2)).aggregateId()
+                    ((EventCancelled) events.get(2))
+                            .aggregateId()
+            );
+        }
+    }
+
+    // =====================================================================
+    // RECONSTITUTION
+    // =====================================================================
+
+    @Nested
+    @DisplayName("Reconstitution")
+    class ReconstitutionTests {
+
+        @Test
+        @DisplayName("Should reconstitute event without registering domain events")
+        void shouldReconstituteEventWithoutRegisteringDomainEvents() {
+
+            UUID eventId =
+                    UUID.randomUUID();
+
+            Long version =
+                    3L;
+
+            Event event =
+                    Event.reconstitute(
+                            eventId,
+                            version,
+                            EVENT_NAME,
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT,
+                            NUMBER_OF_ROWS,
+                            EventStatus.PUBLISHED
+                    );
+
+            assertEquals(
+                    eventId,
+                    event.id()
+            );
+
+            assertEquals(
+                    version,
+                    event.version()
+            );
+
+            assertEquals(
+                    EVENT_NAME,
+                    event.name()
+            );
+
+            assertEquals(
+                    EVENT_DESCRIPTION,
+                    event.description()
+            );
+
+            assertEquals(
+                    SCHEDULED_AT,
+                    event.scheduledAt()
+            );
+
+            assertEquals(
+                    NUMBER_OF_ROWS,
+                    event.numberOfRows()
+            );
+
+            assertEquals(
+                    EventStatus.PUBLISHED,
+                    event.status()
+            );
+
+            assertTrue(
+                    event.domainEvents().isEmpty()
+            );
+        }
+
+        @Test
+        @DisplayName("Should preserve seating capacity when reconstituting event")
+        void shouldPreserveSeatingCapacityWhenReconstitutingEvent() {
+
+            Event event =
+                    Event.reconstitute(
+                            UUID.randomUUID(),
+                            1L,
+                            EVENT_NAME,
+                            EVENT_DESCRIPTION,
+                            SCHEDULED_AT,
+                            NUMBER_OF_ROWS,
+                            EventStatus.DRAFT
+                    );
+
+            assertEquals(
+                    NUMBER_OF_ROWS * Event.SEATS_PER_ROW,
+                    event.capacity()
             );
         }
     }
@@ -655,7 +903,8 @@ class EventTest {
         return Event.create(
                 EVENT_NAME,
                 EVENT_DESCRIPTION,
-                SCHEDULED_AT
+                SCHEDULED_AT,
+                NUMBER_OF_ROWS
         );
     }
 
@@ -677,8 +926,17 @@ class EventTest {
             UUID expectedAggregateId
     ) {
 
-        assertNotNull(eventId);
-        assertEquals(expectedAggregateId, aggregateId);
-        assertNotNull(occurredAt);
+        assertNotNull(
+                eventId
+        );
+
+        assertEquals(
+                expectedAggregateId,
+                aggregateId
+        );
+
+        assertNotNull(
+                occurredAt
+        );
     }
 }
