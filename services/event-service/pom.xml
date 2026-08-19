@@ -26,6 +26,14 @@
     <description>Manages events and event sessions.</description>
 
     <!-- ========================================================= -->
+    <!-- Properties                                                 -->
+    <!-- ========================================================= -->
+
+    <properties>
+        <shedlock.version>6.3.0</shedlock.version>
+    </properties>
+
+    <!-- ========================================================= -->
     <!-- Dependency Management                                     -->
     <!-- ========================================================= -->
 
@@ -146,6 +154,22 @@
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
+        </dependency>
+
+        <!-- ===================================================== -->
+        <!-- Scheduling / Distributed Locking                       -->
+        <!-- ===================================================== -->
+
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-jdbc-template</artifactId>
+            <version>${shedlock.version}</version>
         </dependency>
 
         <!-- ===================================================== -->
