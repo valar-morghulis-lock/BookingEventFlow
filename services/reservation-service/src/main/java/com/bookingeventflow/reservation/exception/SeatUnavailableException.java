@@ -1,4 +1,10 @@
 package com.bookingeventflow.reservation.exception;
 
-public class SeatUnavailableException {
+import java.util.List;
+
+public class SeatUnavailableException extends RuntimeException {
+
+    public SeatUnavailableException(List<String> unavailableSeatNumbers) {
+        super("Seats are not available: " + unavailableSeatNumbers);
+    }
 }

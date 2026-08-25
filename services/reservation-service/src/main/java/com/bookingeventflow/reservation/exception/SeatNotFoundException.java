@@ -1,4 +1,10 @@
 package com.bookingeventflow.reservation.exception;
 
-public class SeatNotFoundException {
+import java.util.List;
+
+public class SeatNotFoundException extends RuntimeException {
+
+    public SeatNotFoundException(List<String> missingSeatNumbers) {
+        super("Seats not found for this event: " + missingSeatNumbers);
+    }
 }
