@@ -2,6 +2,7 @@ package com.bookingeventflow.event.presentation.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -46,12 +47,17 @@ public record UpdateEventRequest(
         @Schema(
                 description = "Number of seating rows. Each row contains exactly 10 seats.",
                 example = "50",
-                minimum = "1"
+                minimum = "1",
+                maximum = "500"
         )
         @NotNull(message = "Number of rows must not be null")
         @Min(
                 value = 1,
                 message = "Number of rows must be at least 1"
+        )
+        @Max(
+                value = 500,
+                message = "Number of rows must not exceed 500"
         )
         Integer numberOfRows
 ) {
