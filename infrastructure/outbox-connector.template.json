@@ -1,0 +1,35 @@
+{
+  "name": "booking-eventflow-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+
+    "database.hostname": "event-service-db",
+    "database.port": "5432",
+    "database.user": "${OUTBOX_DB_USERNAME}",
+    "database.password": "${OUTBOX_DB_PASSWORD}",
+    "database.dbname": "${OUTBOX_DB_NAME}",
+
+    "topic.prefix": "booking-eventflow",
+
+    "plugin.name": "pgoutput",
+    "slot.name": "booking_eventflow_slot",
+    "publication.name": "booking_eventflow_publication",
+    "publication.autocreate.mode": "disabled",
+
+    "table.include.list": "public.outbox_events",
+
+    "snapshot.mode": "no_data",
+
+    "transforms": "outbox",
+    "transforms.outbox.route.by.field": "event_type",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.table.field.event.key": "aggregate_id",
+    "transforms.outbox.table.field.event.payload": "payload",
+    "transforms.outbox.table.field.event.type": "event_type",
+    "transforms.outbox.table.expand.json.payload": "true",
+    "transforms.outbox.route.topic.replacement": "booking-eventflow.event-service.events",
+
+    "tombstones.on.delete": "false",
+    "heartbeat.interval.ms": "10000"
+  }
+}

@@ -13,36 +13,36 @@ class DomainArchitectureTest {
             "com.bookingeventflow.event.domain..";
 
     @ArchTest
-    static final ArchRule domainMustNotDependOnApi =
+    static final ArchRule domainMustNotDependOnController =
             noClasses()
                     .that()
                     .resideInAnyPackage(DOMAIN_PACKAGE)
                     .should()
                     .dependOnClassesThat()
                     .resideInAnyPackage(
-                            "com.bookingeventflow.event.api.."
+                            "com.bookingeventflow.event.controller.."
                     );
 
     @ArchTest
-    static final ArchRule domainMustNotDependOnApplication =
+    static final ArchRule domainMustNotDependOnEntity =
             noClasses()
                     .that()
                     .resideInAnyPackage(DOMAIN_PACKAGE)
                     .should()
                     .dependOnClassesThat()
                     .resideInAnyPackage(
-                            "com.bookingeventflow.event.application.."
+                            "com.bookingeventflow.event.entity.."
                     );
 
     @ArchTest
-    static final ArchRule domainMustNotDependOnInfrastructure =
+    static final ArchRule domainMustNotDependOnRepository =
             noClasses()
                     .that()
                     .resideInAnyPackage(DOMAIN_PACKAGE)
                     .should()
                     .dependOnClassesThat()
                     .resideInAnyPackage(
-                            "com.bookingeventflow.event.infrastructure.."
+                            "com.bookingeventflow.event.repository.."
                     );
 
     @ArchTest
@@ -69,16 +69,13 @@ class DomainArchitectureTest {
                     );
 
     @ArchTest
-    static final ArchRule domainMustNotDependOnMessaging =
+    static final ArchRule domainMustNotDependOnKafka =
             noClasses()
                     .that()
                     .resideInAnyPackage(DOMAIN_PACKAGE)
                     .should()
                     .dependOnClassesThat()
                     .resideInAnyPackage(
-                            "org.springframework.kafka..",
-                            "org.springframework.amqp.."
+                            "org.springframework.kafka.."
                     );
-
-
 }

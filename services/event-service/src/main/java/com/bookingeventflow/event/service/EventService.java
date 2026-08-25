@@ -11,6 +11,7 @@ import com.bookingeventflow.event.exception.InvalidEventStateException;
 import com.bookingeventflow.event.mapper.EventMapper;
 import com.bookingeventflow.event.observability.metrics.EventMetrics;
 import com.bookingeventflow.event.observability.metrics.EventMetrics.Result;
+import com.bookingeventflow.event.outbox.service.OutboxService;
 import com.bookingeventflow.event.pagination.EventCursor;
 import com.bookingeventflow.event.presentation.request.CreateEventRequest;
 import com.bookingeventflow.event.presentation.request.UpdateEventRequest;
@@ -50,17 +51,22 @@ public class EventService {
     private final EventMapper eventMapper;
     private final CursorCodec<EventCursor> cursorCodec;
     private final EventMetrics eventMetrics;
+    private final OutboxService outboxService;
 
     public EventService(
             EventRepository eventRepository,
             EventMapper eventMapper,
             CursorCodec<EventCursor> cursorCodec,
-            EventMetrics eventMetrics
+            EventMetrics eventMetrics,
+            OutboxService outboxService
+
     ) {
         this.eventRepository = eventRepository;
         this.eventMapper = eventMapper;
         this.cursorCodec = cursorCodec;
         this.eventMetrics = eventMetrics;
+        this.outboxService = outboxService;
+
     }
 
     // =====================================================================
@@ -305,6 +311,12 @@ public class EventService {
 
         EventEntity saved =
                 eventRepository.saveAndFlush(entity);
+
+        outboxService.storeAll(
+                event.domainEvents()
+        );
+
+        event.clearDomainEvents();
 
         eventMetrics.recordOperation(
                 OP_PUBLISH,

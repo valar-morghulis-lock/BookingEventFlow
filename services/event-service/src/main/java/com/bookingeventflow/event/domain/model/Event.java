@@ -167,7 +167,9 @@ public class Event extends AggregateRoot {
         registerEvent(
                 new EventPublished(
                         id(),
-                        Instant.now()
+                        Instant.now(),
+                        numberOfRows,
+                        SEATS_PER_ROW
                 )
         );
     }
