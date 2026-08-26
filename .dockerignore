@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Maven
+**/target/
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Build output
+**/build/
+**/out/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Docker
+docker-compose.override.yml
+
+# Documentation
+docs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
