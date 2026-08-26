@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDirectory
 
-$EnvFile = Join-Path $ProjectRoot ".env"
+$EnvFile = Join-Path $ScriptDirectory ".env"
 $TemplateFile = Join-Path $ScriptDirectory "outbox-connector.template.json"
 
 # Load .env
