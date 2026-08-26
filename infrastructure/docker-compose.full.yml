@@ -1,0 +1,11 @@
+include:
+  - docker-compose.yml
+  - platform/kafka/docker-compose.yml
+  - platform/services/event-service/docker-compose.yml
+  - platform/services/reservation-service/docker-compose.yml
+
+# Future additions once these platform folders have content:
+#   - platform/keycloak/docker-compose.yml
+#   - platform/gateway/docker-compose.yml
+#   - platform/monitoring/docker-compose.yml
+#   - platform/tracing/docker-compose.yml

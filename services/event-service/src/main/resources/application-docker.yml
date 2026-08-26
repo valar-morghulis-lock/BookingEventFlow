@@ -1,0 +1,8 @@
+server:
+  port: ${EVENT_SERVICE_PORT:8081}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://event-service-db:5432/${EVENT_DB_NAME}
+    username: ${EVENT_DB_USERNAME}
+    password: ${EVENT_DB_PASSWORD}

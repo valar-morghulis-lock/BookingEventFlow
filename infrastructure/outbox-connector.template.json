@@ -14,7 +14,7 @@
     "plugin.name": "pgoutput",
     "slot.name": "booking_eventflow_slot",
     "publication.name": "booking_eventflow_publication",
-    "publication.autocreate.mode": "disabled",
+    "publication.autocreate.mode": "filtered",
 
     "table.include.list": "public.outbox_events",
 
