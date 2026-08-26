@@ -1,0 +1,76 @@
+services:
+
+  event-service-db:
+    image: postgres:${POSTGRES_VERSION:-17}
+    container_name: booking-event-flow-event-db
+
+    restart: unless-stopped
+
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+
+    environment:
+      POSTGRES_DB: ${EVENT_DB_NAME}
+      POSTGRES_USER: ${EVENT_DB_USERNAME}
+      POSTGRES_PASSWORD: ${EVENT_DB_PASSWORD}
+
+    ports:
+      - "${EVENT_DB_PORT:-5432}:5432"
+
+    volumes:
+      - event-service-db-data:/var/lib/postgresql/data
+      - ../../../postgres/event-service:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${EVENT_DB_USERNAME} -d ${EVENT_DB_NAME}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - booking-event-flow-network
+
+  event-service:
+    build:
+      context: ../../../..
+      dockerfile: services/event-service/Dockerfile
+    container_name: booking-event-flow-event-service
+
+    restart: unless-stopped
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EVENT_DB_NAME: ${EVENT_DB_NAME}
+      EVENT_DB_USERNAME: ${EVENT_DB_USERNAME}
+      EVENT_DB_PASSWORD: ${EVENT_DB_PASSWORD}
+      EVENT_SERVICE_PORT: 8081
+
+    ports:
+      - "${EVENT_SERVICE_PORT:-8081}:8081"
+
+    depends_on:
+      event-service-db:
+        condition: service_healthy
+
+    networks:
+      - booking-event-flow-network
+
+volumes:
+
+  event-service-db-data:
+
+networks:
+
+  booking-event-flow-network:
+    external: true
