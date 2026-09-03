@@ -1,0 +1,8 @@
+server:
+  port: ${CUSTOMER_SERVICE_PORT:8084}
+
+spring:
+  datasource:
+    url: ${CUSTOMER_DB_URL}
+    username: ${CUSTOMER_DB_USERNAME}
+    password: ${CUSTOMER_DB_PASSWORD}
