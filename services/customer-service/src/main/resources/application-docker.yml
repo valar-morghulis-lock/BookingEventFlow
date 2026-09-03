@@ -1,0 +1,11 @@
+server:
+  port: ${CUSTOMER_SERVICE_PORT:8084}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://customer-service-db:5432/${CUSTOMER_DB_NAME}
+    username: ${CUSTOMER_DB_USERNAME}
+    password: ${CUSTOMER_DB_PASSWORD}
+
+jwt:
+  private-key-path: file:/run/secrets/jwt-private-key

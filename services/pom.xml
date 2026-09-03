@@ -19,6 +19,7 @@
     <modules>
         <module>event-service</module>
         <module>reservation-service</module>
+        <module>customer-service</module>
     </modules>
 
 </project>
