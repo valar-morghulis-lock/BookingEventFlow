@@ -1,0 +1,70 @@
+services:
+
+  customer-service-db:
+    image: postgres:${POSTGRES_VERSION:-17}
+    container_name: booking-event-flow-customer-db
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${CUSTOMER_DB_NAME}
+      POSTGRES_USER: ${CUSTOMER_DB_USERNAME}
+      POSTGRES_PASSWORD: ${CUSTOMER_DB_PASSWORD}
+
+    ports:
+      - "${CUSTOMER_DB_PORT:-5434}:5432"
+
+    volumes:
+      - customer-service-db-data:/var/lib/postgresql/data
+      - ../../../postgres/customer-service:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${CUSTOMER_DB_USERNAME} -d ${CUSTOMER_DB_NAME}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - booking-event-flow-network
+
+  customer-service:
+    build:
+      context: ../../../..
+      dockerfile: services/customer-service/Dockerfile
+    container_name: booking-event-flow-customer-service
+
+    restart: unless-stopped
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      CUSTOMER_DB_NAME: ${CUSTOMER_DB_NAME}
+      CUSTOMER_DB_USERNAME: ${CUSTOMER_DB_USERNAME}
+      CUSTOMER_DB_PASSWORD: ${CUSTOMER_DB_PASSWORD}
+      CUSTOMER_SERVICE_PORT: 8084
+
+    ports:
+      - "${CUSTOMER_SERVICE_PORT:-8084}:8084"
+
+    volumes:
+      - ${JWT_PRIVATE_KEY_PATH_HOST}:/run/secrets/jwt-private-key:ro
+
+    depends_on:
+      customer-service-db:
+        condition: service_healthy
+
+    networks:
+      - booking-event-flow-network
+
+volumes:
+
+  customer-service-db-data:
+
+networks:
+
+  booking-event-flow-network:
+    external: true

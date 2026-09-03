@@ -3,3 +3,4 @@ include:
   - platform/kafka/docker-compose.yml
   - platform/services/event-service/docker-compose.yml
   - platform/services/reservation-service/docker-compose.yml
+  - platform/services/customer-service/docker-compose.yml
