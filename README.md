@@ -2,25 +2,24 @@
 
 [![Java](https://img.shields.io/badge/Java-21-orange)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)](https://spring.io/projects/spring-boot)
-[![Status](https://img.shields.io/badge/status-early%20development-yellow)]()
-[![License](https://img.shields.io/badge/license-TBD-lightgrey)]()
+[![Status](https://img.shields.io/badge/status-active%20development-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
 
-A production-style event booking platform built with Java and Spring Boot, designed to demonstrate real-world microservice architecture, concurrency control, transactional consistency, resilience, and distributed workflow coordination.
+A production-style event booking platform built with Java and Spring Boot. BookingEventFlow demonstrates the engineering challenges that show up in real distributed systems: keeping data consistent across services that each own their own database, handling concurrent requests without double-booking a seat, and making sure a message gets where it needs to go even when things fail along the way.
 
-> **Status:** Early Development 🚧 — Event Service implemented; remaining services are planned and under development.
+> **Status:** Active Development. Event Service, Reservation Service, and Customer Service are implemented and tested end to end. Payment, Booking, Ticket, and Notification Services are planned next.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [What's Implemented](#whats-implemented)
 - [Architecture](#architecture)
   - [Current Architecture](#current-architecture)
   - [Target Architecture](#target-architecture)
-  - [Booking Workflow](#booking-workflow)
   - [Data Ownership](#data-ownership)
   - [Architectural Principles](#architectural-principles)
-- [Current Progress](#current-progress)
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
@@ -28,361 +27,256 @@ A production-style event booking platform built with Java and Spring Boot, desig
 - [Engineering Goals](#engineering-goals)
 - [Roadmap](#roadmap)
 - [Project Status](#project-status)
-- [Contributing](#contributing)
 - [License](#license)
 
 ---
 
 ## Overview
 
-BookingEventFlow is a production-oriented reference project for an event booking platform.
-
-The project focuses not only on implementing business functionality, but also on the engineering challenges that arise when building distributed booking systems:
+BookingEventFlow is a reference project for an event booking platform, built to work through the problems that actually matter once a system moves beyond a single service and a single database:
 
 | Concern | Description |
 |---|---|
-| Concurrent seat reservations | Prevent double-booking under high contention |
-| Temporary holds | Reserve seats temporarily with expiration and release |
-| Idempotency | Safely process retries without duplicating business operations |
-| Payment processing | Model payment lifecycle and state transitions |
-| Asynchronous communication | Reliably communicate between services using events |
-| Failure handling | Handle retries, timeouts, partial failures, and unavailable dependencies |
-| Distributed workflow | Coordinate booking operations across multiple services |
-| Observability | Provide tracing, metrics, and structured logging |
-| Testing | Maintain unit, integration, concurrency, and eventually end-to-end coverage |
+| Concurrent seat reservations | Prevent double-booking under real contention |
+| Temporary holds | Reserve seats with an expiration and automatic release |
+| Idempotency | Safely process retries and redelivered messages without duplicating work |
+| Event-driven communication | Reliably propagate state between services using change data capture and Kafka |
+| Authentication | Issue and verify JWTs across services without a shared secret |
+| Rate limiting | Defend authentication endpoints against brute force and denial of service |
+| Observability | Expose metrics for every meaningful business operation, not just HTTP status codes |
+| Testing | Cover unit, integration, concurrency, and architectural boundaries with automated tests |
 
-The project is intentionally being developed incrementally. Architectural capabilities such as Kafka messaging, distributed workflow coordination, transactional outbox, and observability will be introduced as the corresponding services and workflows are implemented.
+The project is built incrementally, and this README reflects what is actually working today, not just what is planned.
+
+---
+
+## What's Implemented
+
+**Event Service** owns event creation, publishing, and lifecycle management, and publishes domain events through a transactional outbox.
+
+**Reservation Service** consumes those events over Kafka (via Debezium change data capture) to build seat inventory, then handles the full reservation lifecycle: hold, confirm, release, and automatic expiry, with pessimistic locking to guarantee two customers can never hold the same seat at once.
+
+**Customer Service** handles registration and login, issuing RSA-signed JWTs and exposing a public JWKS endpoint so other services can verify tokens independently, with no shared secret between them. It also enforces multi-tier rate limiting on its authentication endpoints, load-tested with k6 to confirm the service stays fast and stable under a simulated brute-force attack.
+
+All three services are independently dockerized, run against their own PostgreSQL database, and are covered by unit tests, Testcontainers-backed integration tests, and ArchUnit rules that enforce layering boundaries.
 
 ---
 
 # Architecture
 
-BookingEventFlow follows a **database-per-service microservice architecture**.
+BookingEventFlow follows a database-per-service microservice architecture. Each service owns its own persistence boundary and exposes well-defined APIs and messaging contracts. No service reaches directly into another service's database.
 
-Each service owns its own persistence boundary and exposes well-defined APIs and messaging contracts.
+Services communicate through:
 
-Services must **not directly access another service's database**.
-
-Communication between services will happen through:
-
-- Synchronous APIs where request/response semantics are appropriate.
-- Asynchronous events for distributed workflows and state propagation.
-- Kafka as the planned event backbone.
-
-> **Important:** The architecture described below represents both the current implementation and the intended target architecture. Planned capabilities are explicitly marked as such.
+- Synchronous REST APIs where a request/response interaction makes sense.
+- Asynchronous events for propagating state changes, using the transactional outbox pattern, Debezium, and Kafka.
 
 ---
 
 ## Current Architecture
 
-At the current stage, only the **Event Service** is implemented.
-
-The Event Service runs as an independent Spring Boot application and owns its PostgreSQL database.
-
-There is currently no inter-service communication.
-
 ```text
-                    ┌─────────────────┐
-                    │   API / Client  │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │  Event Service  │
-                    │  Spring Boot    │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │    Event DB     │
-                    │   PostgreSQL    │
-                    └─────────────────┘
+                         ┌──────────────────────┐
+                         │      API / Client      │
+                         └──────────┬────────────┘
+                                    │
+                     ┌──────────────┴──────────────┐
+                     ▼                              ▼
+          ┌──────────────────┐           ┌──────────────────────┐
+          │  Event Service    │           │  Customer Service     │
+          │  Spring Boot       │           │  Spring Boot           │
+          └────────┬──────────┘           └──────────┬────────────┘
+                   │                                 │
+                   ▼                                 ▼
+          ┌──────────────────┐           ┌──────────────────────┐
+          │    Event DB        │           │    Customer DB         │
+          │   PostgreSQL        │           │   PostgreSQL            │
+          └────────┬──────────┘           └──────────────────────┘
+                   │
+                   │ Outbox table
+                   ▼
+          ┌──────────────────┐
+          │     Debezium       │
+          │  (CDC connector)    │
+          └────────┬──────────┘
+                   │
+                   ▼
+          ┌──────────────────┐
+          │       Kafka         │
+          └────────┬──────────┘
+                   │
+                   ▼
+          ┌──────────────────────┐
+          │  Reservation Service   │
+          │  Spring Boot             │
+          └──────────┬────────────┘
+                     │
+                     ▼
+          ┌──────────────────────┐
+          │  Reservation DB         │
+          │   PostgreSQL             │
+          └──────────────────────┘
 ```
 
-### Currently Implemented
+Event Service publishes domain events (such as `EventPublished`) into an outbox table within its own transaction. Debezium captures those inserts via PostgreSQL's logical replication and forwards them to Kafka. Reservation Service consumes those events to build and manage seat inventory, entirely decoupled from Event Service at the database level.
 
-| Service               | Responsibility                                | Status         |
-| ---------------------- | --------------------------------------------- | -------------- |
-| **Event Service**      | Event management and discovery                | ✅ Implemented |
-| Reservation Service    | Seat availability and temporary reservations  | 🚧 Planned     |
-| Payment Service        | Payment processing and payment state          | 🚧 Planned     |
-| Booking Service        | Booking lifecycle and confirmation            | 🚧 Planned     |
-| Ticket Service         | Ticket generation                             | 🚧 Planned     |
-| Notification Service   | Customer notifications                        | 🚧 Planned     |
+Customer Service issues JWTs used to authenticate requests. Wiring Event Service and Reservation Service to validate those tokens as OAuth2 resource servers is in progress.
+
+### Implemented Services
+
+| Service | Responsibility | Status |
+|---|---|---|
+| **Event Service** | Event lifecycle: create, publish, cancel, complete | Implemented |
+| **Reservation Service** | Seat inventory, holds, confirmations, and expiry | Implemented |
+| **Customer Service** | Registration, authentication, JWT issuance | Implemented |
+| Payment Service | Payment processing and payment state | Planned |
+| Booking Service | Booking lifecycle and confirmation | Planned |
+| Ticket Service | Ticket generation | Planned |
+| Notification Service | Customer notifications | Planned |
 
 ---
 
 ## Target Architecture
 
-The target architecture is a **database-per-service, event-driven microservice architecture**.
-
-Kafka will provide asynchronous communication between services, while each service remains responsible for its own business state and persistence.
-
 ```text
                          ┌──────────────────────┐
-                         │      API / Client     │
-                         └──────────┬───────────┘
+                         │      API / Client      │
+                         └──────────┬────────────┘
                                     │
                                     ▼
                          ┌──────────────────────┐
-                         │    Event Service     │
-                         │ Management / Discovery│
-                         └──────────┬───────────┘
+                         │    Customer Service     │
+                         │  Auth / JWT Issuance     │
+                         └──────────┬────────────┘
                                     │
-                                    │ API
                                     ▼
                          ┌──────────────────────┐
-                         │ Reservation Service  │
-                         │ Availability / Holds │
-                         │ Reservation TTL      │
-                         └──────────┬───────────┘
+                         │      Event Service      │
+                         │ Management / Discovery   │
+                         └──────────┬────────────┘
+                                    │
+                                    │ Outbox → Debezium → Kafka
+                                    ▼
+                         ┌──────────────────────┐
+                         │  Reservation Service    │
+                         │ Availability / Holds     │
+                         │ Reservation TTL           │
+                         └──────────┬────────────┘
                                     │
                                     │ Events
                                     ▼
                     ┌────────────────────────────────┐
-                    │              Kafka              │
-                    │                                │
-                    │ reservation.created            │
-                    │ reservation.expired            │
-                    │ payment.completed              │
-                    │ payment.failed                 │
-                    │ booking.confirmed               │
-                    │ booking.cancelled               │
-                    │ ticket.generated                │
-                    └───────┬──────────┬─────────────┘
+                    │              Kafka               │
+                    │                                  │
+                    │ reservation.confirmed            │
+                    │ reservation.expired              │
+                    │ payment.completed                │
+                    │ payment.failed                   │
+                    │ booking.confirmed                 │
+                    │ booking.cancelled                 │
+                    │ ticket.generated                  │
+                    └───────┬──────────┬───────────────┘
                             │          │
               ┌─────────────┘          └─────────────┐
               ▼                                      ▼
       ┌─────────────────┐                    ┌─────────────────┐
-      │ Payment Service │                    │ Booking Service │
-      │                 │                    │                 │
-      │ Payment State   │                    │ Booking State   │
-      └────────┬────────┘                    └────────┬────────┘
-               │                                      │
-               ▼                                      ▼
+      │ Payment Service  │                    │ Booking Service   │
+      │                   │                    │                   │
+      │ Payment State      │                    │ Booking State      │
+      └────────┬──────────┘                    └────────┬──────────┘
+               │                                        │
+               ▼                                        ▼
       ┌─────────────────┐                    ┌─────────────────┐
-      │   Payment DB    │                    │   Booking DB    │
+      │   Payment DB       │                    │   Booking DB        │
       └─────────────────┘                    └─────────────────┘
-
                             ┌─────────────────┐
-                            │ Ticket Service  │
-                            │                 │
-                            │ Ticket Creation │
-                            └────────┬────────┘
+                            │  Ticket Service    │
+                            │                     │
+                            │  Ticket Creation     │
+                            └────────┬──────────┘
                                      │
                                      ▼
                             ┌─────────────────┐
-                            │    Ticket DB    │
-                            └────────┬────────┘
+                            │    Ticket DB         │
+                            └────────┬──────────┘
                                      │
                                      │ Event
                                      ▼
                          ┌──────────────────────┐
-                         │ Notification Service │
-                         │                      │
-                         │ Email / SMS / Push   │
-                         └──────────┬───────────┘
+                         │  Notification Service   │
+                         │                          │
+                         │  Email / SMS / Push       │
+                         └──────────┬────────────┘
                                     │
                                     ▼
                             External Providers
 ```
 
-The target architecture is deliberately separated from the current implementation. Services such as Reservation, Payment, Booking, Ticket, and Notification are not yet implemented.
-
----
-
-## Booking Workflow
-
-The core engineering challenge of BookingEventFlow is not simply building several microservices.
-
-The main objective is to demonstrate how to maintain **business correctness across service boundaries**, especially when concurrency, retries, failures, and asynchronous communication are involved.
-
-The intended booking workflow is:
-
-```text
-Customer
-   │
-   │ Reserve Seats
-   ▼
-Reservation Service
-   │
-   ├── Validate event / seat availability
-   │
-   ├── Acquire concurrency control
-   │
-   ├── Create temporary reservation
-   │
-   └── Publish ReservationCreated
-                │
-                │ Kafka
-                ▼
-         Payment Service
-                │
-        ┌───────┴────────┐
-        │                │
-     SUCCESS           FAILURE
-        │                │
-        ▼                ▼
-PaymentCompleted   PaymentFailed
-        │                │
-        └───────┬────────┘
-                │
-                ▼
-        Booking Service
-                │
-        ┌───────┴────────┐
-        │                │
-      CONFIRM          CANCEL
-        │                │
-        ▼                ▼
-BookingConfirmed   ReleaseReservation
-        │
-        ▼
-   Ticket Service
-        │
-        ├── Generate Ticket
-        │
-        └── Publish TicketGenerated
-                │
-                ▼
-      Notification Service
-                │
-                ▼
-        Email / SMS / Push
-```
-
-The distributed workflow will eventually be coordinated through an explicit Saga strategy.
-
-The current design is leaning toward **orchestration**, where a dedicated workflow coordinator owns the business sequencing and reacts to service outcomes.
-
-> Saga coordination is part of the target architecture and has not yet been implemented.
+Payment, Booking, Ticket, and Notification Services are not yet implemented. An API Gateway and a Saga-based coordination strategy for the multi-service booking workflow are also planned but not yet built.
 
 ---
 
 ## Data Ownership
 
-Each service owns its own database.
-
 ```text
-Event Service        → Event DB
-Reservation Service  → Reservation DB
-Payment Service      → Payment DB
-Booking Service      → Booking DB
-Ticket Service       → Ticket DB
-Notification Service → Notification DB
+Event Service          → Event DB
+Reservation Service     → Reservation DB
+Customer Service         → Customer DB
+Payment Service          → Payment DB
+Booking Service          → Booking DB
+Ticket Service            → Ticket DB
+Notification Service      → Notification DB
 ```
 
-No service should directly query or modify another service's database.
-
-For example:
-
-```text
-❌ Booking Service → Reservation DB
-❌ Payment Service → Booking DB
-❌ Event Service → Reservation DB
-
-✅ Booking Service → Booking DB
-✅ Reservation Service → Reservation DB
-✅ Event Service → Event DB
-```
-
-Cross-service state is communicated through APIs and asynchronous events.
-
-This keeps service ownership explicit and prevents the system from becoming a distributed monolith with shared persistence.
+No service queries or modifies another service's database directly. Cross-service state moves through APIs and asynchronous events, which keeps ownership explicit and prevents the system from turning into a distributed monolith with shared persistence.
 
 ---
 
 ## Architectural Principles
 
-The project is being developed around the following principles:
-
-* **Database per service**
-* **Explicit service ownership**
-* **No shared database access**
-* **Synchronous APIs for request/response interactions**
-* **Asynchronous messaging for distributed workflows**
-* **Kafka for event-driven integration**
-* **Transactional consistency within service boundaries**
-* **Idempotent message processing**
-* **Concurrency control at the reservation boundary**
-* **Saga-based distributed workflow coordination**
-* **Transactional Outbox for reliable event publication**
-* **Retries and timeouts for transient failures**
-* **Circuit breakers for unstable dependencies**
-* **Observability across service boundaries**
-* **Automated testing at multiple levels**
-
-> Kafka, Saga, Transactional Outbox, resilience patterns, and distributed observability are **target capabilities** and will be marked as implemented only after the corresponding functionality is actually delivered.
-
----
-
-# Current Progress
-
-## Event Service ✅
-
-The Event Service is currently the first completed service in the platform.
-
-Implemented capabilities include:
-
-* Create event
-* Retrieve event
-* Update event
-* Delete event
-* REST API
-* Request/response DTO layer
-* Bean validation
-* Domain model / persistence entity separation
-* Persistence mapper
-* Custom JPA converters where required
-* Global REST exception handling
-* Standardized error responses
-* PostgreSQL persistence
-* Flyway database migrations
-* Transactional service layer
-* Concurrency-focused testing
-* Integration testing
-* Testcontainers-based database testing
-
-The Event Service currently represents the foundation on which the remaining booking workflow services will be built.
-
----
-
-## Infrastructure
-
-Current local infrastructure includes:
-
-* PostgreSQL
-* Docker Compose
-* Environment-based configuration
-* Spring profiles
-* `.env` for local configuration
-* `.env.example` as the committed configuration template
-* Testcontainers for isolated integration tests
-
-The local `.env` file is intentionally excluded from Git.
+- Database per service
+- Explicit service ownership
+- No shared database access
+- Synchronous APIs for request/response interactions
+- Transactional outbox for reliable event publication
+- Change data capture (Debezium) and Kafka for asynchronous integration
+- Idempotent message processing
+- Concurrency control at the reservation boundary, using pessimistic locking
+- Asymmetric JWT signing, so only the issuing service can create tokens and every other service can verify them independently
+- Rate limiting at the authentication boundary
+- Automated testing at multiple levels, including architectural boundary enforcement
+- Saga-based distributed workflow coordination (planned)
+- Retries, timeouts, and circuit breakers for transient failures (planned)
+- Observability across service boundaries (partially implemented via Micrometer and Prometheus, distributed tracing planned)
 
 ---
 
 # Technology Stack
 
-| Layer                       | Technologies                                     |
-| ---------------------------- | ------------------------------------------------- |
-| **Language**                | Java 21                                          |
-| **Framework**               | Spring Boot 3.5.x                                |
-| **Web**                     | Spring Web                                       |
-| **Persistence**             | Spring Data JPA / Hibernate                      |
-| **Database**                | PostgreSQL                                       |
-| **Database Migration**      | Flyway                                           |
-| **Build**                   | Maven                                            |
-| **Testing**                 | JUnit 5                                          |
-| **Mocking**                 | Mockito                                          |
-| **Integration Testing**     | Spring Boot Test                                 |
-| **Infrastructure Testing**  | Testcontainers                                   |
-| **Containerization**        | Docker                                           |
-| **Local Infrastructure**    | Docker Compose                                   |
-| **Messaging**               | Kafka — planned                                  |
-| **Resilience**              | Retry / Timeout / Circuit Breaker — planned      |
-| **Observability**           | Metrics / Tracing / Structured Logging — planned |
+| Layer | Technologies |
+|---|---|
+| **Language** | Java 21 |
+| **Framework** | Spring Boot 3.5 |
+| **Web** | Spring Web |
+| **Security** | Spring Security, OAuth2 Resource Server, JWT (RS256) |
+| **Rate Limiting** | Bucket4j |
+| **Persistence** | Spring Data JPA, Hibernate |
+| **Database** | PostgreSQL |
+| **Database Migration** | Flyway |
+| **Messaging** | Apache Kafka, Kafka Connect |
+| **Change Data Capture** | Debezium |
+| **Scheduling / Distributed Locking** | ShedLock |
+| **Build** | Maven |
+| **Testing** | JUnit 5, Mockito, Spring Boot Test |
+| **Architecture Testing** | ArchUnit |
+| **Infrastructure Testing** | Testcontainers |
+| **Load Testing** | k6 |
+| **API Documentation** | springdoc-openapi (Swagger UI) |
+| **Metrics** | Micrometer, Prometheus |
+| **Containerization** | Docker |
+| **Local Infrastructure** | Docker Compose |
+| **Resilience** | Retry, timeout, circuit breaker (planned) |
+| **Tracing** | Distributed tracing (planned) |
 
 ---
 
@@ -392,25 +286,38 @@ The local `.env` file is intentionally excluded from Git.
 BookingEventFlow/
 │
 ├── infrastructure/
-│   └── docker-compose.yml
+│   ├── docker-compose.yml
+│   ├── docker-compose.dev.yml
+│   ├── docker-compose.full.yml
+│   ├── platform/
+│   │   ├── kafka/
+│   │   └── services/
+│   │       ├── event-service/
+│   │       ├── reservation-service/
+│   │       └── customer-service/
+│   └── postgres/
 │
 ├── libraries/
 │   └── common-domain/
 │
 ├── services/
-│   └── event-service/
+│   ├── event-service/
+│   ├── reservation-service/
+│   └── customer-service/
 │       ├── src/
 │       │   ├── main/
 │       │   │   ├── java/
 │       │   │   └── resources/
 │       │   │       ├── application.yml
 │       │   │       ├── application-dev.yml
-│       │   │       └── db/
-│       │   │           └── migration/
-│       │   │
+│       │   │       ├── application-docker.yml
+│       │   │       └── db/migration/
 │       │   └── test/
-│       │
+│       ├── Dockerfile
 │       └── pom.xml
+│
+├── scripts/
+│   └── benchmarks/
 │
 ├── .env.example
 ├── .gitignore
@@ -418,7 +325,7 @@ BookingEventFlow/
 └── README.md
 ```
 
-The project is structured as a multi-module Maven project, allowing each service to remain independently organized while sharing only explicitly approved common libraries.
+The project is a multi-module Maven build. Each service stays independently organized, sharing only what lives in `common-domain`.
 
 ---
 
@@ -426,27 +333,22 @@ The project is structured as a multi-module Maven project, allowing each service
 
 ## Prerequisites
 
-Make sure the following tools are installed:
+- JDK 21+
+- Maven
+- Docker and Docker Compose
+- OpenSSL (for generating the RSA key pair used by Customer Service)
 
-* JDK 21+
-* Maven
-* Docker
-* Docker Compose
-
-Verify the installations:
+Verify your setup:
 
 ```bash
 java -version
 mvn -version
 docker --version
 docker compose version
+openssl version
 ```
 
----
-
 ## Environment Configuration
-
-The project uses environment variables for local configuration.
 
 Copy the example environment file:
 
@@ -460,63 +362,60 @@ On Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
-Configure the required values in `.env`.
+Fill in the required values. Each service has its own section in `.env.example`, covering its port, database credentials, and any service-specific configuration.
 
-Example:
+## Generating the JWT Signing Key
 
-```env
-SPRING_PROFILES_ACTIVE=dev
-
-EVENT_SERVICE_PORT=8081
-
-EVENT_DB_NAME=event_service
-EVENT_DB_USERNAME=event_service
-EVENT_DB_PASSWORD=event_service
-EVENT_DB_PORT=5432
-
-EVENT_DB_URL=jdbc:postgresql://event-db:5432/event_service
-```
-
-The `.env` file is intentionally ignored by Git.
-
-
----
-
-## Start Local Infrastructure
-
-Start PostgreSQL using Docker Compose:
+Customer Service signs tokens with an RSA key pair. Generate one before running it for the first time:
 
 ```bash
-docker compose -f infrastructure/docker-compose.yml up -d
+cd services/customer-service
+
+openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:2048
+openssl rsa -pubout -in private.pem -out src/main/resources/keys/public.pem
+openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in private.pem -out private_pkcs8.pem
 ```
 
-Verify the infrastructure:
+Move `private_pkcs8.pem` outside the repository, then point `JWT_PRIVATE_KEY_PATH` in `.env` at its new location. The public key stays in the repository, since it is safe to share and is what other services use to verify tokens.
+
+## Running the Full Stack with Docker
+
+Bring up every service and its infrastructure together:
 
 ```bash
-docker compose -f infrastructure/docker-compose.yml ps
+cd infrastructure
+docker compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml ps
 ```
 
-The Event Service database should be available before starting the application.
+Register the outbox connector so Event Service's changes reach Kafka:
 
----
-
-## Stop Local Infrastructure
+```powershell
+.\register-outbox-connector.ps1
+```
 
 ```bash
-docker compose -f infrastructure/docker-compose.yml down
+./register-outbox-connector.sh
 ```
 
-To remove the database volume as well:
+Tear the stack down when you're done:
 
 ```bash
-docker compose -f infrastructure/docker-compose.yml down -v
+docker compose -f docker-compose.dev.yml down
 ```
 
-> Removing the volume deletes the local PostgreSQL data.
+## Running a Service Locally
 
----
+If you'd rather iterate on one service without rebuilding a container each time, run it directly with Maven. Bring up its database (and Kafka, if needed) via Docker first, then:
 
-## Build the Project
+```bash
+cd services/event-service
+mvn spring-boot:run
+```
+
+Each service reads its configuration from `application-dev.yml` when `SPRING_PROFILES_ACTIVE=dev` is set.
+
+## Build the Whole Project
 
 From the repository root:
 
@@ -526,243 +425,135 @@ mvn clean install
 
 ---
 
-## Run the Event Service
-
-From the repository root:
-
-```bash
-cd services/event-service
-mvn spring-boot:run
-```
-
-The development profile is activated through:
-
-```env
-SPRING_PROFILES_ACTIVE=dev
-```
-
-The Event Service runs on the configured port:
-
-```text
-http://localhost:8081
-```
-
----
-
 # Running Tests
 
-Run the complete test suite from the repository root:
+Run the full test suite from the repository root:
 
 ```bash
 mvn clean test
 ```
 
-The integration tests use **Testcontainers** where appropriate.
+Integration tests use Testcontainers, so they don't depend on PostgreSQL running on your machine. Each test spins up its own disposable, isolated database container.
 
-This means integration tests do not depend on a PostgreSQL installation running directly on the developer's machine.
+The test suite includes:
 
-Instead, Testcontainers creates an isolated PostgreSQL container for the test execution.
-
-This provides:
-
-* Repeatable test environments
-* Isolation from developer machines
-* Consistent database versions
-* Disposable test databases
-* Reduced dependency on local infrastructure
-
-The intended testing strategy will eventually include:
-
-```text
-Unit Tests
-    │
-    ▼
-Integration Tests
-    │
-    ▼
-Concurrency Tests
-    │
-    ▼
-Contract Tests
-    │
-    ▼
-End-to-End Tests
-```
+- Unit tests for service logic
+- Testcontainers-backed integration tests, including a concurrency test that proves only one of several simultaneous requests can hold the same seat
+- Controller tests with `@WebMvcTest`
+- ArchUnit tests that enforce package layering and naming conventions
+- A k6 load-testing benchmark (`scripts/benchmarks/login-benchmark.js`) that verifies Customer Service's rate limiting holds under sustained concurrent load
 
 ---
 
 # Engineering Goals
 
-BookingEventFlow is being developed around the following engineering goals:
+**Correctness before optimization.** A booking system that's fast but allows double-booking is fundamentally broken.
 
-### Correctness Before Optimization
+**Explicit domain boundaries.** Each service has a clearly defined responsibility and owns its own data.
 
-Business correctness is prioritized over premature performance optimization.
+**Safe concurrency.** The reservation boundary stays correct under real concurrent access, proven with automated tests, not just assumed.
 
-A booking system that is fast but allows double-booking is fundamentally incorrect.
+**Idempotent operations.** Retries and redelivered messages should never duplicate a reservation or a business outcome.
 
-### Explicit Domain Boundaries
+**Independent verification.** Services trust each other's signed tokens without sharing secrets, and can be tested and deployed independently.
 
-Each service should have a clearly defined responsibility and ownership boundary.
+**Automated testing.** Business-critical behavior is covered by tests before new capabilities are layered on top.
 
-### Strong Transactional Guarantees
-
-Operations that must be atomic within a service boundary should be protected by appropriate transactional semantics.
-
-### Safe Concurrency
-
-The reservation boundary must remain correct under concurrent access and high contention.
-
-### Idempotent Distributed Operations
-
-Retries must not result in duplicate reservations, payments, bookings, tickets, or notifications.
-
-### Failure-Aware Communication
-
-The system must assume that network calls, services, brokers, and external providers can fail.
-
-### Independent Service Ownership
-
-Each service owns its data and business state.
-
-### Automated Testing
-
-Business-critical behavior should be covered by automated tests before moving to higher-level distributed workflows.
-
-### Observable Systems
-
-The eventual distributed architecture should provide sufficient metrics, logs, and tracing to understand system behavior across service boundaries.
-
-### Production-Oriented Design
-
-The project aims to demonstrate production-oriented engineering practices without claiming to be production-ready at the current stage.
+**Production-oriented, not production-claiming.** The project demonstrates the practices a production system needs without claiming to be one yet.
 
 ---
 
 # Roadmap
 
 ## Foundation
-
-* [x] Establish project structure
-* [x] Implement initial Event Service
-* [x] Introduce PostgreSQL persistence
-* [x] Introduce Flyway migrations
-* [x] Add REST API
-* [x] Add global exception handling
-* [x] Add integration tests
-* [x] Add concurrency-focused tests
-* [x] Introduce Docker-based local infrastructure
-* [x] Introduce environment-based configuration
+- [x] Multi-module project structure
+- [x] Event Service
+- [x] PostgreSQL persistence per service
+- [x] Flyway migrations
+- [x] REST APIs with global exception handling
+- [x] Docker Compose local infrastructure, split by platform concern
+- [x] Environment-based configuration
 
 ## Reservation
+- [x] Reservation Service
+- [x] Seat inventory built from consumed events
+- [x] Seat-level concurrency control with pessimistic locking
+- [x] Double-booking prevention, verified under concurrent load
+- [x] Temporary holds with expiration
+- [x] Automatic expiry via a distributed-lock-guarded scheduler
+- [x] Reservation confirm and release flows
+- [x] Idempotent event consumption
 
-* [ ] Implement Reservation Service
-* [ ] Introduce seat inventory
-* [ ] Implement seat concurrency control
-* [ ] Prevent double booking
-* [ ] Implement temporary reservations
-* [ ] Implement reservation expiration
-* [ ] Implement reservation release
-* [ ] Implement idempotent reservation operations
+## Event-Driven Communication
+- [x] Transactional outbox pattern
+- [x] Debezium change data capture
+- [x] Kafka as the event backbone
+- [ ] Domain event versioning strategy
+- [ ] Additional domain events beyond `EventPublished`
+
+## Authentication
+- [x] Customer Service
+- [x] Registration and login
+- [x] Asymmetric JWT signing (RS256) with a public JWKS endpoint
+- [x] Protected profile endpoint
+- [x] Multi-tier rate limiting against brute force and denial of service
+- [x] Load-tested with k6
+- [ ] Wire Event Service and Reservation Service as OAuth2 resource servers
+- [ ] Move reservation ownership from a client-supplied field to the authenticated JWT claim
+- [ ] Refresh tokens and token revocation
+- [ ] Role-based authorization for administrative operations
 
 ## Payment
-
-* [ ] Implement Payment Service
-* [ ] Define payment state machine
-* [ ] Implement payment idempotency
-* [ ] Handle payment success/failure
-* [ ] Handle delayed payment responses
-* [ ] Handle payment retry scenarios
+- [ ] Payment Service
+- [ ] Payment state machine
+- [ ] Payment idempotency
+- [ ] Success and failure handling
+- [ ] Retry handling for delayed payment responses
 
 ## Distributed Workflow
-
-* [ ] Introduce asynchronous messaging with Kafka
-* [ ] Define domain events
-* [ ] Define event versioning strategy
-* [ ] Implement distributed booking workflow
-* [ ] Define Saga coordination strategy
-* [ ] Implement Saga orchestration
-* [ ] Implement compensation actions
-* [ ] Handle partial workflow failures
-* [ ] Handle duplicate event delivery
+- [ ] Define the booking Saga
+- [ ] Saga orchestration
+- [ ] Compensation actions
+- [ ] Partial workflow failure handling
+- [ ] Duplicate event delivery handling beyond what's already covered
 
 ## Reliability
+- [ ] Retry policies
+- [ ] Timeout policies
+- [ ] Circuit breakers
+- [ ] Dead-letter handling
 
-* [ ] Introduce Transactional Outbox
-* [ ] Introduce retry policies
-* [ ] Introduce timeout policies
-* [ ] Introduce circuit breakers
-* [ ] Introduce dead-letter handling
-* [ ] Introduce failure recovery strategies
-
-## Ticketing & Notifications
-
-* [ ] Implement Ticket Service
-* [ ] Implement ticket generation
-* [ ] Implement Notification Service
-* [ ] Add email notifications
-* [ ] Add SMS/push notification abstraction
-* [ ] Make notification processing idempotent
+## Ticketing and Notifications
+- [ ] Ticket Service
+- [ ] Notification Service
+- [ ] Email notifications
+- [ ] Idempotent notification processing
 
 ## Observability
+- [x] Application metrics via Micrometer and Prometheus
+- [x] Per-operation dimensional metrics with outcome tagging
+- [ ] Distributed tracing
+- [ ] Correlation IDs across service boundaries
+- [ ] Kafka consumer and producer metrics
+- [ ] Centralized dashboards (Grafana)
 
-* [ ] Introduce structured logging
-* [ ] Introduce application metrics
-* [ ] Introduce distributed tracing
-* [ ] Introduce correlation IDs
-* [ ] Introduce Kafka consumer/producer metrics
-* [ ] Define service health indicators
-
-## Testing
-
-* [ ] Expand unit test coverage
-* [ ] Expand integration test coverage
-* [ ] Add concurrency stress testing
-* [ ] Add contract testing
-* [ ] Add Kafka integration testing
-* [ ] Add distributed workflow tests
-* [ ] Add end-to-end testing
-* [ ] Add failure-injection testing
-
-## Production Architecture
-
-* [ ] Define production deployment architecture
-* [ ] Containerize application services
-* [ ] Define environment-specific configuration
-* [ ] Define secrets management strategy
-* [ ] Define database deployment strategy
-* [ ] Define Kafka deployment strategy
-* [ ] Define monitoring and alerting strategy
-* [ ] Define CI/CD pipeline
+## Platform
+- [ ] API Gateway
+- [ ] Centralized authentication enforcement at the gateway
+- [ ] CI/CD pipeline
+- [ ] Secrets management strategy for deployment
 
 ---
 
 # Project Status
 
-**Early Development 🚧**
+**Active Development**
 
-BookingEventFlow is currently an actively developed production-style event booking platform.
+Event Service, Reservation Service, and Customer Service are implemented, tested, and running together as a working event-driven system. The core engineering challenges the project set out to demonstrate, concurrency safety, event-driven consistency, and independent service authentication, are proven with real automated tests and load benchmarks, not just described.
 
-The **Event Service is implemented** and provides the initial foundation for the rest of the platform.
+Payment, Booking, Ticket, and Notification Services, along with Saga coordination, an API Gateway, and full observability, are the next phases of work.
 
-The remaining services and distributed workflow are intentionally being implemented incrementally.
-
-The primary engineering focus is on:
-
-* Concurrency
-* Double-booking prevention
-* Transactional consistency
-* Idempotency
-* Temporary reservations
-* Failure recovery
-* Asynchronous communication
-* Distributed workflow coordination
-* Resilience
-* Observability
-
-The project should **not be considered production-ready** at its current stage.
-
-The objective is to evolve the platform incrementally while demonstrating the engineering decisions required to build a reliable distributed booking system.
+This project is not production-ready. It's a working demonstration of the engineering decisions a real distributed booking system requires, built and verified incrementally.
 
 ---
 
