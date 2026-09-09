@@ -6,3 +6,10 @@ spring:
     url: jdbc:postgresql://event-service-db:5432/${EVENT_DB_NAME}
     username: ${EVENT_DB_USERNAME}
     password: ${EVENT_DB_PASSWORD}
+
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://customer-service:8084/.well-known/jwks.json
