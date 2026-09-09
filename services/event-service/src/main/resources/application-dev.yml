@@ -9,6 +9,12 @@ spring:
     password: ${EVENT_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${CUSTOMER_SERVICE_JWKS_URI:http://localhost:8084/.well-known/jwks.json}
+
 server:
   port: ${EVENT_SERVICE_PORT}
 

@@ -11,6 +11,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,15 @@ public class GlobalExceptionHandler {
 
     private static final Logger log =
             LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            AccessDeniedException exception,
+            HttpServletRequest request
+    ) {
+        return buildErrorResponse(HttpStatus.FORBIDDEN, "Access denied.", request);
+    }
 
     // =========================================================
     // DOMAIN EXCEPTIONS
@@ -179,9 +189,9 @@ public class GlobalExceptionHandler {
 
     /**
      * Handles invalid request parameter types.
-     *
+     * <p>
      * Example:
-     *
+     * <p>
      * GET /api/v1/events?limit=abc
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -204,11 +214,11 @@ public class GlobalExceptionHandler {
 
     /**
      * Handles requests for resources that do not exist.
-     *
+     * <p>
      * This is particularly relevant for requests such as:
-     *
+     * <p>
      * GET /favicon.ico when testing API via APIDog, for example :D
-     *
+     * <p>
      * It should not be treated as an unexpected server error.
      */
     @ExceptionHandler(NoResourceFoundException.class)
@@ -262,7 +272,7 @@ public class GlobalExceptionHandler {
 
     /**
      * Last-resort handler for unexpected application exceptions.
-     *
+     * <p>
      * The underlying exception is logged but never exposed to the
      * API client.
      */

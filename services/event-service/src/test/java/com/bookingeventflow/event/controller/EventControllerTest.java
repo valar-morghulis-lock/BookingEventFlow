@@ -1,6 +1,7 @@
 package com.bookingeventflow.event.controller;
 
 import com.bookingeventflow.common.pagination.CursorDecodingException;
+import com.bookingeventflow.event.config.SecurityConfig;
 import com.bookingeventflow.event.domain.model.EventStatus;
 import com.bookingeventflow.event.entity.EventEntity;
 import com.bookingeventflow.event.exception.EventNotFoundException;
@@ -11,11 +12,15 @@ import com.bookingeventflow.event.service.EventService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,17 +32,36 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(EventController.class)
+@WebMvcTest(
+        value = EventController.class,
+        properties = "CUSTOMER_SERVICE_JWKS_URI=http://localhost:8084/.well-known/jwks.json"
+)
+@Import(SecurityConfig.class)
 class EventControllerTest {
+
+    private RequestPostProcessor adminJwt() {
+        return jwt()
+                .jwt(builder -> builder.claim("role", "ADMIN"))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_ADMIN")
+                );
+    }
+
+    private RequestPostProcessor customerJwt() {
+        return jwt()
+                .jwt(builder -> builder.claim("role", "CUSTOMER"))
+                .authorities(
+                        new SimpleGrantedAuthority("ROLE_CUSTOMER")
+                );
+    }
 
     private static final String EVENTS_URL =
             "/api/v1/events";
@@ -94,12 +118,14 @@ class EventControllerTest {
     @MockitoBean
     private EventService eventService;
 
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
+
     // =========================================================
     // TEST FIXTURES
     // =========================================================
 
     private EventResponse response() {
-
         return response(
                 0L,
                 "Rock Concert",
@@ -114,7 +140,6 @@ class EventControllerTest {
             String description,
             EventStatus status
     ) {
-
         return new EventResponse(
                 EVENT_ID,
                 version,
@@ -127,7 +152,6 @@ class EventControllerTest {
     }
 
     private EventPageResponse pageResponse() {
-
         return new EventPageResponse(
                 List.of(response()),
                 NEXT_CURSOR
@@ -135,7 +159,6 @@ class EventControllerTest {
     }
 
     private EventPageResponse emptyPageResponse() {
-
         return new EventPageResponse(
                 List.of(),
                 null
@@ -154,6 +177,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENTS_URL)
+                                .with(adminJwt())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(VALID_REQUEST)
                 )
@@ -191,11 +215,39 @@ class EventControllerTest {
     }
 
     @Test
+    void create_shouldReturn401_whenNotAuthenticated() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENTS_URL)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST)
+                )
+                .andExpect(status().isUnauthorized());
+
+        verify(eventService, never()).create(any());
+    }
+
+    @Test
+    void create_shouldReturn403_whenAuthenticatedAsCustomer() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENTS_URL)
+                                .with(customerJwt())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_REQUEST)
+                )
+                .andExpect(status().isForbidden());
+
+        verify(eventService, never()).create(any());
+    }
+
+    @Test
     void create_shouldReturn400_whenValidationFails()
             throws Exception {
 
         mockMvc.perform(
                         post(EVENTS_URL)
+                                .with(adminJwt())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(INVALID_REQUEST)
                 )
@@ -254,6 +306,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENTS_URL)
+                                .with(adminJwt())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(VALID_REQUEST)
                 )
@@ -282,7 +335,7 @@ class EventControllerTest {
     }
 
     // =========================================================
-    // GET BY ID
+    // GET BY ID (public, no auth needed)
     // =========================================================
 
     @Test
@@ -417,7 +470,7 @@ class EventControllerTest {
     }
 
     // =========================================================
-    // GET ALL - KEYSET PAGINATION + STATUS FILTER
+    // GET ALL - KEYSET PAGINATION + STATUS FILTER (public)
     // =========================================================
 
     @Test
@@ -997,6 +1050,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         put(EVENT_URL)
+                                .with(adminJwt())
                                 .contentType(
                                         MediaType.APPLICATION_JSON
                                 )
@@ -1037,11 +1091,39 @@ class EventControllerTest {
     }
 
     @Test
+    void update_shouldReturn401_whenNotAuthenticated() throws Exception {
+
+        mockMvc.perform(
+                        put(EVENT_URL)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(UPDATED_REQUEST)
+                )
+                .andExpect(status().isUnauthorized());
+
+        verify(eventService, never()).update(eq(EVENT_ID), any());
+    }
+
+    @Test
+    void update_shouldReturn403_whenAuthenticatedAsCustomer() throws Exception {
+
+        mockMvc.perform(
+                        put(EVENT_URL)
+                                .with(customerJwt())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(UPDATED_REQUEST)
+                )
+                .andExpect(status().isForbidden());
+
+        verify(eventService, never()).update(eq(EVENT_ID), any());
+    }
+
+    @Test
     void update_shouldReturn400_whenValidationFails()
             throws Exception {
 
         mockMvc.perform(
                         put(EVENT_URL)
+                                .with(adminJwt())
                                 .contentType(
                                         MediaType.APPLICATION_JSON
                                 )
@@ -1081,6 +1163,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         put(EVENT_URL)
+                                .with(adminJwt())
                                 .contentType(
                                         MediaType.APPLICATION_JSON
                                 )
@@ -1122,6 +1205,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         put(EVENT_URL)
+                                .with(adminJwt())
                                 .contentType(
                                         MediaType.APPLICATION_JSON
                                 )
@@ -1163,6 +1247,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         put(EVENT_URL)
+                                .with(adminJwt())
                                 .contentType(
                                         MediaType.APPLICATION_JSON
                                 )
@@ -1210,6 +1295,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/publish")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isOk())
                 .andExpect(
@@ -1225,6 +1311,29 @@ class EventControllerTest {
     }
 
     @Test
+    void publish_shouldReturn401_whenNotAuthenticated() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENT_URL + "/publish")
+                )
+                .andExpect(status().isUnauthorized());
+
+        verify(eventService, never()).publish(EVENT_ID);
+    }
+
+    @Test
+    void publish_shouldReturn403_whenAuthenticatedAsCustomer() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENT_URL + "/publish")
+                                .with(customerJwt())
+                )
+                .andExpect(status().isForbidden());
+
+        verify(eventService, never()).publish(EVENT_ID);
+    }
+
+    @Test
     void publish_shouldReturn404_whenEventDoesNotExist()
             throws Exception {
 
@@ -1235,6 +1344,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/publish")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isNotFound());
 
@@ -1255,6 +1365,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/publish")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isConflict())
                 .andExpect(
@@ -1285,6 +1396,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/cancel")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isOk())
                 .andExpect(
@@ -1300,6 +1412,29 @@ class EventControllerTest {
     }
 
     @Test
+    void cancel_shouldReturn401_whenNotAuthenticated() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENT_URL + "/cancel")
+                )
+                .andExpect(status().isUnauthorized());
+
+        verify(eventService, never()).cancel(EVENT_ID);
+    }
+
+    @Test
+    void cancel_shouldReturn403_whenAuthenticatedAsCustomer() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENT_URL + "/cancel")
+                                .with(customerJwt())
+                )
+                .andExpect(status().isForbidden());
+
+        verify(eventService, never()).cancel(EVENT_ID);
+    }
+
+    @Test
     void cancel_shouldReturn404_whenEventDoesNotExist()
             throws Exception {
 
@@ -1310,6 +1445,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/cancel")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isNotFound());
 
@@ -1330,6 +1466,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/cancel")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isConflict())
                 .andExpect(
@@ -1360,6 +1497,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/complete")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isOk())
                 .andExpect(
@@ -1375,6 +1513,29 @@ class EventControllerTest {
     }
 
     @Test
+    void complete_shouldReturn401_whenNotAuthenticated() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENT_URL + "/complete")
+                )
+                .andExpect(status().isUnauthorized());
+
+        verify(eventService, never()).complete(EVENT_ID);
+    }
+
+    @Test
+    void complete_shouldReturn403_whenAuthenticatedAsCustomer() throws Exception {
+
+        mockMvc.perform(
+                        post(EVENT_URL + "/complete")
+                                .with(customerJwt())
+                )
+                .andExpect(status().isForbidden());
+
+        verify(eventService, never()).complete(EVENT_ID);
+    }
+
+    @Test
     void complete_shouldReturn404_whenEventDoesNotExist()
             throws Exception {
 
@@ -1385,6 +1546,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/complete")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isNotFound());
 
@@ -1405,6 +1567,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         post(EVENT_URL + "/complete")
+                                .with(adminJwt())
                 )
                 .andExpect(status().isConflict())
                 .andExpect(
@@ -1424,10 +1587,34 @@ class EventControllerTest {
 
         mockMvc.perform(
                         delete(EVENT_URL)
+                                .with(adminJwt())
                 )
                 .andExpect(status().isNoContent());
 
         verify(eventService).delete(EVENT_ID);
+    }
+
+    @Test
+    void delete_shouldReturn401_whenNotAuthenticated() throws Exception {
+
+        mockMvc.perform(
+                        delete(EVENT_URL)
+                )
+                .andExpect(status().isUnauthorized());
+
+        verify(eventService, never()).delete(EVENT_ID);
+    }
+
+    @Test
+    void delete_shouldReturn403_whenAuthenticatedAsCustomer() throws Exception {
+
+        mockMvc.perform(
+                        delete(EVENT_URL)
+                                .with(customerJwt())
+                )
+                .andExpect(status().isForbidden());
+
+        verify(eventService, never()).delete(EVENT_ID);
     }
 
     @Test
@@ -1442,6 +1629,7 @@ class EventControllerTest {
 
         mockMvc.perform(
                         delete(EVENT_URL)
+                                .with(adminJwt())
                 )
                 .andExpect(status().isNotFound());
 

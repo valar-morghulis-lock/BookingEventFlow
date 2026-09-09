@@ -2,6 +2,12 @@
   application:
     name: event-service
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${CUSTOMER_SERVICE_JWKS_URI}
+
   jpa:
     open-in-view: false
 

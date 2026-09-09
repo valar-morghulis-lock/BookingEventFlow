@@ -20,10 +20,11 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
-import java.util.UUID;
 
 @Configuration
 public class JwtKeyConfig {
+
+    private static final String KEY_ID = "customer-service-key";
 
     private final RSAPublicKey publicKey;
     private final RSAPrivateKey privateKey;
@@ -36,13 +37,23 @@ public class JwtKeyConfig {
         this.privateKey = readPrivateKey(privateKeyResource);
     }
 
+    /**
+     * The single source of truth for this service's RSA key pair,
+     * including its key ID. Both the encoder (signs tokens) and the
+     * JWKS controller (publishes the public key) must use this SAME
+     * RSAKey instance, so the "kid" in a signed token's header always
+     * matches the "kid" published at /.well-known/jwks.json.
+     */
     @Bean
-    public JwtEncoder jwtEncoder() {
-
-        RSAKey rsaKey = new RSAKey.Builder(publicKey)
+    public RSAKey rsaKey() {
+        return new RSAKey.Builder(publicKey)
                 .privateKey(privateKey)
-                .keyID(UUID.randomUUID().toString())
+                .keyID(KEY_ID)
                 .build();
+    }
+
+    @Bean
+    public JwtEncoder jwtEncoder(RSAKey rsaKey) {
 
         JWKSource<SecurityContext> jwkSource = new ImmutableJWKSet<>(new JWKSet(rsaKey));
 
@@ -52,14 +63,6 @@ public class JwtKeyConfig {
     @Bean
     public JwtDecoder jwtDecoder() {
         return NimbusJwtDecoder.withPublicKey(publicKey).build();
-    }
-
-    @Bean
-    public RSAKey rsaKey() {
-        return new RSAKey.Builder(publicKey)
-                .privateKey(privateKey)
-                .keyID("customer-service-key")
-                .build();
     }
 
     private RSAPublicKey readPublicKey(Resource resource) throws Exception {

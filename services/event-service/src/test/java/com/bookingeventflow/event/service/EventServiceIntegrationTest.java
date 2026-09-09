@@ -11,6 +11,8 @@ import com.bookingeventflow.event.repository.EventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.test.context.ActiveProfiles;
@@ -29,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 @ActiveProfiles("test")
 @Testcontainers
+@ImportAutoConfiguration(exclude = {
+        OAuth2ResourceServerAutoConfiguration.class
+})
 class EventServiceIntegrationTest {
 
     private static final int DEFAULT_LIMIT = 20;
@@ -98,6 +103,18 @@ class EventServiceIntegrationTest {
         registry.add(
                 "spring.jpa.properties.hibernate.format_sql",
                 () -> "true"
+        );
+
+        // Add dummy values for OAuth2 placeholders
+        registry.add(
+                "CUSTOMER_SERVICE_JWKS_URI",
+                () -> "http://localhost:8084/.well-known/jwks.json"
+        );
+
+        // Or disable security completely for tests
+        registry.add(
+                "spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+                () -> "http://localhost:8084/.well-known/jwks.json"
         );
     }
 
